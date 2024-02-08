@@ -15,3 +15,6 @@ benchmark/dist/*
 # v8 cpu profiles
 *-.log
 *.cpuprofile
+
+.yarn/cache
+.yarn/install-state.gz
