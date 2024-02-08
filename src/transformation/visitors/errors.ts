@@ -100,8 +100,9 @@ export const transformTryStatement: FunctionVisitor<ts.TryStatement> = (statemen
     const returnedIdentifier = lua.createIdentifier("____hasReturned");
     let returnCondition: lua.Expression | undefined;
 
-    const pCall = lua.createIdentifier("pcall");
-    const tryCall = lua.createCallExpression(pCall, [lua.createFunctionExpression(tryBlock)]);
+    const xpCall = lua.createIdentifier("xpcall");
+    const debugTraceback = lua.createIdentifier("debug.traceback");
+    const tryCall = lua.createCallExpression(xpCall, [lua.createFunctionExpression(tryBlock), debugTraceback]);
 
     if (statement.catchClause && statement.catchClause.block.statements.length > 0) {
         // try with catch
