@@ -5,6 +5,7 @@ node_modules
 /test/transpile/module-resolution/**/tsconfig.tsbuildinfo
 
 yarn.lock
+.yarn/
 .vscode
 .idea
 .DS_Store
