@@ -137,13 +137,7 @@ export function createConfigFileUpdater(
         if (!configFile || !configFilePath) return [];
 
         if (!configFileMap.has(configFile)) {
-            const parsedConfigFile = updateParsedConfigFile(
-                parseConfigFileWithSystem(
-                    configFilePath,
-                    optionsToExtend,
-                )
-            );
-
+            const parsedConfigFile = parseConfigFileWithSystem(configFilePath, optionsToExtend, ts.sys);
             configFileMap.set(configFile, parsedConfigFile);
         }
 
