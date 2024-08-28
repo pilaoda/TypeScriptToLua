@@ -12,6 +12,10 @@ import { findLuaRequires, LuaRequire } from "./find-lua-requires";
 import { Plugin } from "./plugins";
 import * as picomatch from "picomatch";
 
+declare global {
+    type AbortSignal = any;
+}
+
 const resolver = resolve.ResolverFactory.createResolver({
     extensions: [".lua"],
     enforceExtension: true, // Resolved file must be a lua file
