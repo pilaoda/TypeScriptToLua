@@ -12,10 +12,14 @@ import { findLuaRequires, LuaRequire } from "./find-lua-requires";
 import { Plugin } from "./plugins";
 import * as picomatch from "picomatch";
 
+declare global {
+    type AbortSignal = any;
+}
+
 const resolver = resolve.ResolverFactory.createResolver({
     extensions: [".lua"],
     enforceExtension: true, // Resolved file must be a lua file
-    fileSystem: { ...new resolve.CachedInputFileSystem(fs, 0) },
+    fileSystem: { ...new resolve.CachedInputFileSystem(fs as any, 0) },
     useSyncFileSystemCalls: true,
     conditionNames: ["require", "node", "tstl", "default"],
     symlinks: false, // Do not resolve symlinks to their original paths (that breaks node_modules detection)
