@@ -19,3 +19,18 @@ test.each(fixtures)("Transformation (%s)", (_name, content) => {
         .disableSemanticCheck()
         .expectLuaToMatchSnapshot();
 });
+
+const luauFixturesPath = path.join(fixturesPath, "luau");
+const luauFixtures = fs
+    .readdirSync(luauFixturesPath)
+    .filter(f => path.extname(f) === ".ts")
+    .sort()
+    .map(f => [path.parse(f).name, fs.readFileSync(path.join(luauFixturesPath, f), "utf8")]);
+
+test.each(luauFixtures)("Luau-specific Transformation (%s)", (_name, content) => {
+    util.testModule(content)
+        .setOptions({ luaLibImport: tstl.LuaLibImportKind.Require, luaTarget: tstl.LuaTarget.Luau })
+        .ignoreDiagnostics([annotationDeprecated.code, couldNotResolveRequire.code])
+        .disableSemanticCheck()
+        .expectLuaToMatchSnapshot();
+});
