@@ -14,12 +14,12 @@ export function hasExportEquals(sourceFile: ts.SourceFile): boolean {
  * Search up until finding a node satisfying the callback
  */
 export function findFirstNodeAbove<T extends ts.Node>(node: ts.Node, callback: (n: ts.Node) => n is T): T | undefined {
-    let current = node;
+    let current = ts.getOriginalNode(node);
     while (current.parent) {
         if (callback(current.parent)) {
             return current.parent;
         } else {
-            current = current.parent;
+            current = ts.getOriginalNode(current.parent);
         }
     }
 }
