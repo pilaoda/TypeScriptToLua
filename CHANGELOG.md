@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.31.0
+
+- Upgraded TypeScript to 5.8.2
+- Changed `currentIndent` from private to protected in the `LuaPrinter` to allow custom printers with alternate indentation
+- Added `bit` and `bit32` as reserved Lua keywords to avoid accidental naming clashes.
+
+## 1.30.0
+
+- Allow passing in-memory plugins when using the tstl API, for more flexible integration into scripts
+- Changed how stacktraces are handled for `Error` in Lua 5.1 and LuaJIT
+
 ## 1.29.0
 
 - Added support for the `Luau` luaTarget. This will use Luau's `continue` statement and ternary conditional expression `if ... then ... else ...` where appropriate.
