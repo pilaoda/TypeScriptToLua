@@ -25,7 +25,7 @@ function jsonLib(target: tstl.LuaTarget): string {
 // Using `test` directly makes eslint-plugin-jest consider this file as a test
 const defineTest = test;
 
-function getLuaBindingsForVersion(target: tstl.LuaTarget): { lauxlib: LauxLib; lua: Lua; lualib: LuaLib } {
+function getLuaBindingsForVersion(target: tstl.LuaTarget): { lauxlib: LauxLib; lua: Lua; lualib: LuaLib; } {
     if (target === tstl.LuaTarget.Lua50) {
         const { lauxlib, lua, lualib } = require("lua-wasm-bindings/dist/lua.50");
         return { lauxlib, lua, lualib };
@@ -113,10 +113,11 @@ export class ExecutionError extends Error {
     }
 }
 
-export type ExecutableTranspiledFile = tstl.TranspiledFile & { lua: string; luaSourceMap: string };
+export type ExecutableTranspiledFile = tstl.TranspiledFile & { lua: string; luaSourceMap: string; };
 export type TapCallback = (builder: TestBuilder) => void;
 export abstract class TestBuilder {
-    constructor(protected _tsCode: string) {}
+    protected traceOnError = false;
+    constructor(protected _tsCode: string) { }
 
     // Options
 
@@ -235,7 +236,7 @@ export abstract class TestBuilder {
                 Object.keys(this.extraFiles).some(f => f.startsWith(normalizeSlashes(path))),
             getCurrentDirectory: () => ".",
             readFile: (path: string) => this.extraFiles[normalizeSlashes(path)] ?? ts.sys.readFile(path),
-            writeFile() {},
+            writeFile() { },
         };
     }
 
@@ -477,7 +478,29 @@ return JSON.stringify((function()
     ${this.getLuaCodeWithWrapper(mainFile)}
 end)());`;
 
-        const status = lauxlib.luaL_dostring(L, wrappedMainCode);
+        let status: number;
+        if (this.traceOnError) {
+            // Get debug.traceback function and push it to the stack.
+            lua.lua_getglobal(L, "debug");
+            lua.lua_getfield(L, -1, "traceback");
+            lua.lua_remove(L, -2); // remove debug table
+
+            const messageHandlerIndex = lua.lua_gettop(L);
+
+            // Load the chunk.
+            if (lauxlib.luaL_loadstring(L, wrappedMainCode) !== LUA_OK) {
+                // Syntax error on load
+                const message = lua.lua_tostring(L, -1);
+                lua.lua_close(L);
+                return new ExecutionError(message);
+            }
+
+            // Call the chunk with the message handler.
+            status = lua.lua_pcall(L, 0, -1, messageHandlerIndex);
+            lua.lua_remove(L, messageHandlerIndex); // Remove message handler from stack
+        } else {
+            status = lauxlib.luaL_dostring(L, wrappedMainCode);
+        }
 
         if (status === LUA_OK) {
             if (lua.lua_isstring(L, -1)) {
@@ -514,7 +537,16 @@ end)());`;
             // Adding source Lua to the package.preload cache will allow require to find it
             lua.lua_getglobal(state, "package");
             lua.lua_getfield(state, -1, "preload");
-            lauxlib.luaL_loadstring(state, fileContent);
+
+            // Call loadstring(fileContent, fileName) to compile the code
+            const loadFunc = this.options.luaTarget === tstl.LuaTarget.Lua51
+                ? "loadstring"
+                : "load";
+            lua.lua_getglobal(state, loadFunc);
+            lua.lua_pushstring(state, fileContent);
+            lua.lua_pushstring(state, fileName);
+            lua.lua_call(state, 2, 1); // Call loadstring with 2 args, expect 1 result
+
             lua.lua_setfield(state, -2, modName);
         }
     }
@@ -556,9 +588,12 @@ end)());`;
         try {
             result = vm.runInContext(this.getJsCodeWithWrapper(), globalContext);
         } catch (error) {
-            const hasMessage = (error: any): error is { message: string } => error.message !== undefined;
-            assert(hasMessage(error));
-            return new ExecutionError(error.message);
+            const hasMessage = (error: any): error is { message: string; } => error.message !== undefined;
+            if (hasMessage(error)) {
+                return new ExecutionError(error.message);
+            } else {
+                return new ExecutionError(String(error));
+            }
         }
 
         function removeUndefinedFields(obj: any): any {
@@ -655,22 +690,22 @@ class ProjectTestBuilder extends ModuleTestBuilder {
 
 const createTestBuilderFactory =
     <T extends TestBuilder>(builder: new (_tsCode: string) => T, serializeSubstitutions: boolean) =>
-    (...args: [string] | [TemplateStringsArray, ...any[]]): T => {
-        let tsCode: string;
-        if (typeof args[0] === "string") {
-            expect(serializeSubstitutions).toBe(false);
-            tsCode = args[0];
-        } else {
-            let [raw, ...substitutions] = args;
-            if (serializeSubstitutions) {
-                substitutions = substitutions.map(s => formatCode(s));
+        (...args: [string] | [TemplateStringsArray, ...any[]]): T => {
+            let tsCode: string;
+            if (typeof args[0] === "string") {
+                expect(serializeSubstitutions).toBe(false);
+                tsCode = args[0];
+            } else {
+                let [raw, ...substitutions] = args;
+                if (serializeSubstitutions) {
+                    substitutions = substitutions.map(s => formatCode(s));
+                }
+
+                tsCode = String.raw(Object.assign([], { raw }), ...substitutions);
             }
 
-            tsCode = String.raw(Object.assign([], { raw }), ...substitutions);
-        }
-
-        return new builder(tsCode);
-    };
+            return new builder(tsCode);
+        };
 
 export const testBundle = createTestBuilderFactory(BundleTestBuilder, false);
 export const testModule = createTestBuilderFactory(ModuleTestBuilder, false);
