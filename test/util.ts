@@ -25,7 +25,7 @@ function jsonLib(target: tstl.LuaTarget): string {
 // Using `test` directly makes eslint-plugin-jest consider this file as a test
 const defineTest = test;
 
-function getLuaBindingsForVersion(target: tstl.LuaTarget): { lauxlib: LauxLib; lua: Lua; lualib: LuaLib; } {
+function getLuaBindingsForVersion(target: tstl.LuaTarget): { lauxlib: LauxLib; lua: Lua; lualib: LuaLib } {
     if (target === tstl.LuaTarget.Lua50) {
         const { lauxlib, lua, lualib } = require("lua-wasm-bindings/dist/lua.50");
         return { lauxlib, lua, lualib };
@@ -113,11 +113,11 @@ export class ExecutionError extends Error {
     }
 }
 
-export type ExecutableTranspiledFile = tstl.TranspiledFile & { lua: string; luaSourceMap: string; };
+export type ExecutableTranspiledFile = tstl.TranspiledFile & { lua: string; luaSourceMap: string };
 export type TapCallback = (builder: TestBuilder) => void;
 export abstract class TestBuilder {
     protected traceOnError = false;
-    constructor(protected _tsCode: string) { }
+    constructor(protected _tsCode: string) {}
 
     // Options
 
@@ -236,7 +236,7 @@ export abstract class TestBuilder {
                 Object.keys(this.extraFiles).some(f => f.startsWith(normalizeSlashes(path))),
             getCurrentDirectory: () => ".",
             readFile: (path: string) => this.extraFiles[normalizeSlashes(path)] ?? ts.sys.readFile(path),
-            writeFile() { },
+            writeFile() {},
         };
     }
 
@@ -539,9 +539,7 @@ end)());`;
             lua.lua_getfield(state, -1, "preload");
 
             // Call loadstring(fileContent, fileName) to compile the code
-            const loadFunc = this.options.luaTarget === tstl.LuaTarget.Lua51
-                ? "loadstring"
-                : "load";
+            const loadFunc = this.options.luaTarget === tstl.LuaTarget.Lua51 ? "loadstring" : "load";
             lua.lua_getglobal(state, loadFunc);
             lua.lua_pushstring(state, fileContent);
             lua.lua_pushstring(state, fileName);
@@ -571,6 +569,8 @@ end)());`;
 
             if (transpiledExtraFile?.js) {
                 vm.runInContext(transpiledExtraFile.js, globalContext);
+            } else if (fileName.startsWith("node:")) {
+                return require(fileName.slice(5));
             }
 
             // Have to return globalContext.module.exports
@@ -588,7 +588,7 @@ end)());`;
         try {
             result = vm.runInContext(this.getJsCodeWithWrapper(), globalContext);
         } catch (error) {
-            const hasMessage = (error: any): error is { message: string; } => error.message !== undefined;
+            const hasMessage = (error: any): error is { message: string } => error.message !== undefined;
             if (hasMessage(error)) {
                 return new ExecutionError(error.message);
             } else {
@@ -690,22 +690,22 @@ class ProjectTestBuilder extends ModuleTestBuilder {
 
 const createTestBuilderFactory =
     <T extends TestBuilder>(builder: new (_tsCode: string) => T, serializeSubstitutions: boolean) =>
-        (...args: [string] | [TemplateStringsArray, ...any[]]): T => {
-            let tsCode: string;
-            if (typeof args[0] === "string") {
-                expect(serializeSubstitutions).toBe(false);
-                tsCode = args[0];
-            } else {
-                let [raw, ...substitutions] = args;
-                if (serializeSubstitutions) {
-                    substitutions = substitutions.map(s => formatCode(s));
-                }
-
-                tsCode = String.raw(Object.assign([], { raw }), ...substitutions);
+    (...args: [string] | [TemplateStringsArray, ...any[]]): T => {
+        let tsCode: string;
+        if (typeof args[0] === "string") {
+            expect(serializeSubstitutions).toBe(false);
+            tsCode = args[0];
+        } else {
+            let [raw, ...substitutions] = args;
+            if (serializeSubstitutions) {
+                substitutions = substitutions.map(s => formatCode(s));
             }
 
-            return new builder(tsCode);
-        };
+            tsCode = String.raw(Object.assign([], { raw }), ...substitutions);
+        }
+
+        return new builder(tsCode);
+    };
 
 export const testBundle = createTestBuilderFactory(BundleTestBuilder, false);
 export const testModule = createTestBuilderFactory(ModuleTestBuilder, false);

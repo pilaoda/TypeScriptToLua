@@ -113,3 +113,18 @@ test("tsdoc comment does not cause a diagnostic (#1299)", () => {
         script.on_init(() => {})
     `.expectToHaveNoDiagnostics();
 });
+
+test("JSDoc is copied on a class method", () => {
+    const builder = util.testModule`
+        class Foo {
+            /** This is a method comment. */
+            bar() {}
+        }
+    `.expectToHaveNoDiagnostics();
+
+    const transpiledFile = builder.getLuaResult().transpiledFiles.find(f => f.outPath === "main.lua")!;
+    expect(transpiledFile).toBeDefined();
+    const { lua } = transpiledFile;
+    expect(lua).toBeDefined();
+    expect(lua).toContain("This is a method comment.");
+});

@@ -6,6 +6,7 @@ import { transformPropertyName } from "../../literal";
 import { isStaticNode } from "../utils";
 import { createPrototypeName } from "./constructor";
 import { createClassMethodDecoratingExpression } from "../decorators";
+import { setJSDocComments } from "../../../utils/lua-ast";
 
 export function transformMemberExpressionOwnerName(
     node: ts.PropertyDeclaration | ts.MethodDeclaration | ts.AccessorDeclaration,
@@ -40,31 +41,33 @@ export function transformMethodDeclaration(
     if (methodHasDecorators || methodHasParameterDecorators) {
         if (context.options.experimentalDecorators) {
             // Legacy decorator statement
+            const assignment = lua.createAssignmentStatement(
+                lua.createTableIndexExpression(methodTable, methodName),
+                functionExpression
+            );
+            setJSDocComments(context, node, undefined, assignment);
             return [
-                lua.createAssignmentStatement(
-                    lua.createTableIndexExpression(methodTable, methodName),
-                    functionExpression
-                ),
+                assignment,
                 lua.createExpressionStatement(
                     createClassMethodDecoratingExpression(context, node, functionExpression, className)
                 ),
             ];
         } else {
-            return [
-                lua.createAssignmentStatement(
-                    lua.createTableIndexExpression(methodTable, methodName),
-                    createClassMethodDecoratingExpression(context, node, functionExpression, className),
-                    node
-                ),
-            ];
+            const assignment = lua.createAssignmentStatement(
+                lua.createTableIndexExpression(methodTable, methodName),
+                createClassMethodDecoratingExpression(context, node, functionExpression, className),
+                node
+            );
+            setJSDocComments(context, node, undefined, assignment);
+            return [assignment];
         }
     } else {
-        return [
-            lua.createAssignmentStatement(
-                lua.createTableIndexExpression(methodTable, methodName),
-                functionExpression,
-                node
-            ),
-        ];
+        const assignment = lua.createAssignmentStatement(
+            lua.createTableIndexExpression(methodTable, methodName),
+            functionExpression,
+            node
+        );
+        setJSDocComments(context, node, undefined, assignment);
+        return [assignment];
     }
 }

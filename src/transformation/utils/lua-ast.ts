@@ -252,7 +252,7 @@ export function createLocalOrExportedOrGlobalDeclaration(
  * Apply JSDoc comments to the newly-created Lua statement, if present.
  * https://stackoverflow.com/questions/47429792/is-it-possible-to-get-comments-as-nodes-in-the-ast-using-the-typescript-compiler
  */
-function setJSDocComments(
+export function setJSDocComments(
     context: TransformationContext,
     tsOriginal: ts.Node | undefined,
     declaration: lua.VariableDeclarationStatement | undefined,
