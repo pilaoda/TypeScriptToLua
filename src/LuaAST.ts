@@ -144,6 +144,7 @@ export interface TextRange {
 export interface Node extends TextRange {
     kind: SyntaxKind;
     flags: NodeFlags;
+    tsOriginal?: ts.Node;
 }
 
 export function createNode(kind: SyntaxKind, tsOriginal?: ts.Node): Node {
@@ -153,9 +154,9 @@ export function createNode(kind: SyntaxKind, tsOriginal?: ts.Node): Node {
 
     const sourcePosition = getSourcePosition(tsOriginal);
     if (sourcePosition) {
-        return { kind, line: sourcePosition.line, column: sourcePosition.column, flags: NodeFlags.None };
+        return { kind, line: sourcePosition.line, column: sourcePosition.column, flags: NodeFlags.None, tsOriginal };
     } else {
-        return { kind, flags: NodeFlags.None };
+        return { kind, flags: NodeFlags.None, tsOriginal };
     }
 }
 

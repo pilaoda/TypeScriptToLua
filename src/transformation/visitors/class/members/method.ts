@@ -43,7 +43,8 @@ export function transformMethodDeclaration(
             // Legacy decorator statement
             const assignment = lua.createAssignmentStatement(
                 lua.createTableIndexExpression(methodTable, methodName),
-                functionExpression
+                functionExpression,
+                node
             );
             setJSDocComments(context, node, undefined, assignment);
             return [
