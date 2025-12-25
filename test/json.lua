@@ -73,10 +73,10 @@ local function encode_table(val, stack)
 
   stack[val] = true
 
-  if val[1] ~= nil or next(val) == nil or (val.constructor == _G.Array and _G.Array) then
+  if val[1] ~= nil or next(val) == nil or (Array and Array.isArray(val)) then
     -- Treat as array -- check keys are valid and it is not sparse
     local n = 0
-    if val.constructor == _G.Array and _G.Array then
+    if Array and Array.isArray(val) then
       n = val.length
     else
       for k in pairs(val) do

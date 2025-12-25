@@ -29,6 +29,7 @@ export function transformConstructorDeclaration(
 
     // Transform body
     const scope = context.pushScope(ScopeType.Function);
+    scope.node = statement;
     const body = transformFunctionBodyContent(context, statement.body);
 
     const [params, dotsLiteral, restParamName] = transformParameters(
