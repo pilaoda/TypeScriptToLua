@@ -25,7 +25,7 @@ function jsonLib(target: tstl.LuaTarget): string {
 // Using `test` directly makes eslint-plugin-jest consider this file as a test
 const defineTest = test;
 
-function getLuaBindingsForVersion(target: tstl.LuaTarget): { lauxlib: LauxLib; lua: Lua; lualib: LuaLib } {
+function getLuaBindingsForVersion(target: tstl.LuaTarget): { lauxlib: LauxLib; lua: Lua; lualib: LuaLib; } {
     if (target === tstl.LuaTarget.Lua50) {
         const { lauxlib, lua, lualib } = require("lua-wasm-bindings/dist/lua.50");
         return { lauxlib, lua, lualib };
@@ -113,11 +113,38 @@ export class ExecutionError extends Error {
     }
 }
 
-export type ExecutableTranspiledFile = tstl.TranspiledFile & { lua: string; luaSourceMap: string };
+function removeUndefinedFields(obj: any): any {
+    if (obj === null) {
+        return undefined;
+    }
+
+    if (Array.isArray(obj)) {
+        return obj.map(removeUndefinedFields);
+    }
+
+    if (typeof obj === "object") {
+        const copy: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+            if (obj[key] !== undefined) {
+                copy[key] = removeUndefinedFields(value);
+            }
+        }
+
+        if (Object.keys(copy).length === 0) {
+            return [];
+        }
+
+        return copy;
+    }
+
+    return obj;
+}
+
+export type ExecutableTranspiledFile = tstl.TranspiledFile & { lua: string; luaSourceMap: string; };
 export type TapCallback = (builder: TestBuilder) => void;
 export abstract class TestBuilder {
     protected traceOnError = false;
-    constructor(protected _tsCode: string) {}
+    constructor(protected _tsCode: string) { }
 
     // Options
 
@@ -236,7 +263,7 @@ export abstract class TestBuilder {
                 Object.keys(this.extraFiles).some(f => f.startsWith(normalizeSlashes(path))),
             getCurrentDirectory: () => ".",
             readFile: (path: string) => this.extraFiles[normalizeSlashes(path)] ?? ts.sys.readFile(path),
-            writeFile() {},
+            writeFile() { },
         };
     }
 
@@ -506,7 +533,7 @@ end)());`;
             if (lua.lua_isstring(L, -1)) {
                 const result = eval(`(${lua.lua_tostring(L, -1)})`);
                 lua.lua_close(L);
-                return result === null ? undefined : result;
+                return result === null ? undefined : removeUndefinedFields(result);
             } else {
                 const returnType = lua.lua_typename(L, lua.lua_type(L, -1));
                 lua.lua_close(L);
@@ -588,39 +615,12 @@ end)());`;
         try {
             result = vm.runInContext(this.getJsCodeWithWrapper(), globalContext);
         } catch (error) {
-            const hasMessage = (error: any): error is { message: string } => error.message !== undefined;
+            const hasMessage = (error: any): error is { message: string; } => error.message !== undefined;
             if (hasMessage(error)) {
                 return new ExecutionError(error.message);
             } else {
                 return new ExecutionError(String(error));
             }
-        }
-
-        function removeUndefinedFields(obj: any): any {
-            if (obj === null) {
-                return undefined;
-            }
-
-            if (Array.isArray(obj)) {
-                return obj.map(removeUndefinedFields);
-            }
-
-            if (typeof obj === "object") {
-                const copy: any = {};
-                for (const [key, value] of Object.entries(obj)) {
-                    if (obj[key] !== undefined) {
-                        copy[key] = removeUndefinedFields(value);
-                    }
-                }
-
-                if (Object.keys(copy).length === 0) {
-                    return [];
-                }
-
-                return copy;
-            }
-
-            return obj;
         }
 
         return removeUndefinedFields(result);
@@ -690,22 +690,22 @@ class ProjectTestBuilder extends ModuleTestBuilder {
 
 const createTestBuilderFactory =
     <T extends TestBuilder>(builder: new (_tsCode: string) => T, serializeSubstitutions: boolean) =>
-    (...args: [string] | [TemplateStringsArray, ...any[]]): T => {
-        let tsCode: string;
-        if (typeof args[0] === "string") {
-            expect(serializeSubstitutions).toBe(false);
-            tsCode = args[0];
-        } else {
-            let [raw, ...substitutions] = args;
-            if (serializeSubstitutions) {
-                substitutions = substitutions.map(s => formatCode(s));
+        (...args: [string] | [TemplateStringsArray, ...any[]]): T => {
+            let tsCode: string;
+            if (typeof args[0] === "string") {
+                expect(serializeSubstitutions).toBe(false);
+                tsCode = args[0];
+            } else {
+                let [raw, ...substitutions] = args;
+                if (serializeSubstitutions) {
+                    substitutions = substitutions.map(s => formatCode(s));
+                }
+
+                tsCode = String.raw(Object.assign([], { raw }), ...substitutions);
             }
 
-            tsCode = String.raw(Object.assign([], { raw }), ...substitutions);
-        }
-
-        return new builder(tsCode);
-    };
+            return new builder(tsCode);
+        };
 
 export const testBundle = createTestBuilderFactory(BundleTestBuilder, false);
 export const testModule = createTestBuilderFactory(ModuleTestBuilder, false);
