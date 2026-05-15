@@ -155,7 +155,7 @@ export function createExportedIdentifier(
             ? createModuleLocalName(context, exportScope)
             : createExportsIdentifier();
 
-    return lua.createTableIndexExpression(exportTable, lua.createStringLiteral(identifier.text));
+    return lua.createTableIndexExpression(exportTable, lua.createStringLiteral(identifier.text), identifier.tsOriginal);
 }
 
 export function createDefaultExportExpression(node: ts.Node): lua.AssignmentLeftHandSideExpression {

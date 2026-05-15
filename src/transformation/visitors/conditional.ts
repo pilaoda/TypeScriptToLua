@@ -102,9 +102,9 @@ export function transformIfStatement(statement: ts.IfStatement, context: Transfo
             // end
             if (precedingStatements.length > 0) {
                 const elseBlock = lua.createBlock([...precedingStatements, elseStatement]);
-                return lua.createIfStatement(condition, ifBlock, elseBlock);
+                return lua.createIfStatement(condition, ifBlock, elseBlock, statement);
             } else {
-                return lua.createIfStatement(condition, ifBlock, elseStatement);
+                return lua.createIfStatement(condition, ifBlock, elseStatement, statement);
             }
         } else {
             context.pushScope(ScopeType.Conditional);
@@ -114,11 +114,11 @@ export function transformIfStatement(statement: ts.IfStatement, context: Transfo
             );
             context.popScope();
             const elseBlock = lua.createBlock(elseStatements);
-            return lua.createIfStatement(condition, ifBlock, elseBlock);
+            return lua.createIfStatement(condition, ifBlock, elseBlock, statement);
         }
     }
 
-    return lua.createIfStatement(condition, ifBlock);
+    return lua.createIfStatement(condition, ifBlock, undefined, statement);
 }
 
 export function checkOnlyTruthyCondition(condition: ts.Expression, context: TransformationContext) {

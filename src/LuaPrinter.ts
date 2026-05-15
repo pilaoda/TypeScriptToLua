@@ -421,9 +421,9 @@ export class LuaPrinter {
         this.pushIndent();
         chunks.push(...this.printStatementArray(statement.statements));
         this.popIndent();
-        chunks.push(this.indent("end"));
+        chunks.push(this.createSourceNode(statement, this.indent("end")));
 
-        return this.concatNodes(...chunks);
+        return this.createSourceNode(statement, chunks);
     }
 
     public printVariableDeclarationStatement(statement: lua.VariableDeclarationStatement): SourceNode {
@@ -485,13 +485,13 @@ export class LuaPrinter {
                 this.pushIndent();
                 chunks.push(this.printBlock(statement.elseBlock));
                 this.popIndent();
-                chunks.push(this.indent("end"));
+                chunks.push(this.createSourceNode(statement, this.indent("end")));
             }
         } else {
-            chunks.push(this.indent("end"));
+            chunks.push(this.createSourceNode(statement, this.indent("end")));
         }
 
-        return this.concatNodes(...chunks);
+        return this.createSourceNode(statement, chunks);
     }
 
     public printWhileStatement(statement: lua.WhileStatement): SourceNode {
@@ -503,9 +503,9 @@ export class LuaPrinter {
         chunks.push(this.printBlock(statement.body));
         this.popIndent();
 
-        chunks.push(this.indent("end"));
+        chunks.push(this.createSourceNode(statement, this.indent("end")));
 
-        return this.concatNodes(...chunks);
+        return this.createSourceNode(statement, chunks);
     }
 
     public printRepeatStatement(statement: lua.RepeatStatement): SourceNode {
@@ -519,7 +519,7 @@ export class LuaPrinter {
 
         chunks.push(this.indent("until "), this.printExpression(statement.condition));
 
-        return this.concatNodes(...chunks);
+        return this.createSourceNode(statement, chunks);
     }
 
     public printForStatement(statement: lua.ForStatement): SourceNode {
@@ -540,9 +540,9 @@ export class LuaPrinter {
         chunks.push(this.printBlock(statement.body));
         this.popIndent();
 
-        chunks.push(this.indent("end"));
+        chunks.push(this.createSourceNode(statement, this.indent("end")));
 
-        return this.concatNodes(...chunks);
+        return this.createSourceNode(statement, chunks);
     }
 
     public printForInStatement(statement: lua.ForInStatement): SourceNode {
@@ -556,7 +556,7 @@ export class LuaPrinter {
         this.pushIndent();
         chunks.push(this.printBlock(statement.body));
         this.popIndent();
-        chunks.push(this.indent("end"));
+        chunks.push(this.createSourceNode(statement, this.indent("end")));
 
         return this.createSourceNode(statement, chunks);
     }
@@ -795,7 +795,7 @@ export class LuaPrinter {
             chunks.push(...this.printExpressionList(expression.params));
         }
 
-        chunks.push(")");
+        chunks.push(this.createSourceNode(expression, ")"));
 
         return this.createSourceNode(expression, chunks);
     }
@@ -816,7 +816,7 @@ export class LuaPrinter {
             chunks.push(...this.printExpressionList(expression.params));
         }
 
-        chunks.push(")");
+        chunks.push(this.createSourceNode(expression, ")"));
 
         return this.createSourceNode(expression, chunks);
     }

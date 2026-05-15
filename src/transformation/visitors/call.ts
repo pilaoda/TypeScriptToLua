@@ -57,6 +57,9 @@ function transformCallWithArguments(
     let transformedContext: lua.Expression | undefined;
     if (callContext) {
         transformedContext = context.transformExpression(callContext);
+        if (transformedContext.line === undefined) {
+            lua.setNodeOriginal(transformedContext, callExpression);
+        }
     }
 
     if (argPrecedingStatements.length > 0) {
@@ -83,6 +86,9 @@ export function transformCallAndArguments(
 ): [lua.Expression, lua.Expression[]] {
     const { precedingStatements: argPrecedingStatements, result: transformedArguments } =
         transformInPrecedingStatementScope(context, () => transformArguments(context, params, signature, callContext));
+    if (callContext && transformedArguments.length > 0 && transformedArguments[0].line === undefined) {
+        lua.setNodeOriginal(transformedArguments[0], callExpression);
+    }
     return transformCallWithArguments(context, callExpression, transformedArguments, argPrecedingStatements);
 }
 
