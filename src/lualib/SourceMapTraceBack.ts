@@ -9,7 +9,6 @@ interface SourceMap {
 
 declare global {
     function __TS__originalTraceback(this: void, thread?: LuaThread, message?: string, level?: number): void;
-    // eslint-disable-next-line no-var
     var __TS__sourcemap: Record<string, SourceMap>;
 }
 
@@ -49,7 +48,12 @@ export function __TS__SourceMapTraceBack(this: void, fileName: string, sourceMap
                 return `${file}:${line}`;
             };
 
-            let [result] = string.gsub(trace, "(%S+)%.lua:(%d+)", (file, line) =>
+            // Rewrite stack trace frames from "{PATH}.lua:{LINE}" to "{PATH}.ts:{ORIGINAL_LINE}".
+            // https://github.com/TypeScriptToLua/TypeScriptToLua/issues/1665
+            // Avoid matching anonymous function stack entries like `in function <...>`
+            // by excluding `<` before the file path.
+            // TODO: This will still fail for paths containing spaces.
+            let [result] = string.gsub(trace, "([^%s<]+)%.lua:(%d+)", (file, line) =>
                 replacer(`${file}.lua`, `${file}.ts`, line)
             );
 

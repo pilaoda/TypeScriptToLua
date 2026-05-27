@@ -81,6 +81,7 @@ describe("in function call", () => {
             [tstl.LuaTarget.Lua52]: builder => builder.tap(expectTableUnpack).expectToMatchJsResult(),
             [tstl.LuaTarget.Lua53]: builder => builder.tap(expectTableUnpack).expectToMatchJsResult(),
             [tstl.LuaTarget.Lua54]: builder => builder.tap(expectTableUnpack).expectToMatchJsResult(),
+            [tstl.LuaTarget.Lua55]: builder => builder.tap(expectTableUnpack).expectToMatchJsResult(),
             [tstl.LuaTarget.Luau]: builder => builder.tap(expectTableUnpack).expectToMatchJsResult(),
         }
     );
@@ -95,6 +96,7 @@ describe("in array literal", () => {
         [tstl.LuaTarget.Lua52]: builder => builder.tap(expectTableUnpack).expectToMatchJsResult(),
         [tstl.LuaTarget.Lua53]: builder => builder.tap(expectTableUnpack).expectToMatchJsResult(),
         [tstl.LuaTarget.Lua54]: builder => builder.tap(expectTableUnpack).expectToMatchJsResult(),
+        [tstl.LuaTarget.Lua55]: builder => builder.tap(expectTableUnpack).expectToMatchJsResult(),
         [tstl.LuaTarget.Luau]: builder => builder.tap(expectTableUnpack).expectToMatchJsResult(),
     });
 
@@ -114,6 +116,17 @@ describe("in object literal", () => {
         "{ ...{ x: false }, x: true }",
         "{ ...{ x: false }, x: false, ...{ x: true } }",
     ])("of object literal (%p)", expression => {
+        util.testExpression(expression)
+            .ignoreDiagnostics([2783]) // duplicate property in spread — intentional, testing spread override behavior
+            .expectToMatchJsResult();
+    });
+
+    test.each([
+        "{ ...((false && { a: 1 }) as any) }",
+        "{ ...((true && { a: 1 }) as any) }",
+        "{ a: 1, ...((false && { b: 2 }) as any) }",
+        "{ ...(null as any), ...(undefined as any) }",
+    ])("of short-circuited operand (%p)", expression => {
         util.testExpression(expression).expectToMatchJsResult();
     });
 

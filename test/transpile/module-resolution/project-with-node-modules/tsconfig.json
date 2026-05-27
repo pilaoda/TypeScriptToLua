@@ -1,5 +1,6 @@
 {
     "compilerOptions": {
+        "ignoreDeprecations": "6.0",
         "strict": true,
         "moduleResolution": "Node",
         "noUnusedLocals": true,
@@ -7,6 +8,7 @@
         "target": "esnext",
         "lib": ["esnext"],
         "types": [],
-        "rootDir": "."
+        "rootDir": ".",
+        "noUncheckedSideEffectImports": false
     }
 }

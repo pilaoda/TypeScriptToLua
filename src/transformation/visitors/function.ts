@@ -16,6 +16,7 @@ import { LuaLibFeature, transformLuaLibFunction } from "../utils/lualib";
 import { transformInPrecedingStatementScope } from "../utils/preceding-statements";
 import { peekScope, performHoisting, Scope, ScopeType } from "../utils/scope";
 import { isFunctionType } from "../utils/typescript";
+import { unsupportedAsyncGenerator } from "../utils/diagnostics";
 import { isAsyncFunction, wrapInAsyncAwaiter } from "./async-await";
 import { transformIdentifier } from "./identifier";
 import { transformExpressionBodyToReturnStatement } from "./return";
@@ -164,11 +165,10 @@ export function transformFunctionBody(
     context: TransformationContext,
     parameters: ts.NodeArray<ts.ParameterDeclaration>,
     body: ts.ConciseBody,
-    spreadIdentifier?: lua.Identifier,
-    node?: ts.FunctionLikeDeclaration
+    node: ts.FunctionLikeDeclaration,
+    spreadIdentifier?: lua.Identifier
 ): [lua.Statement[], Scope] {
-    const scope = context.pushScope(ScopeType.Function);
-    scope.node = node;
+    const scope = context.pushScope(ScopeType.Function, node);
     let bodyStatements = transformFunctionBodyContent(context, body);
     if (node && isAsyncFunction(node)) {
         bodyStatements = [lua.createReturnStatement([wrapInAsyncAwaiter(context, bodyStatements)])];
@@ -225,6 +225,10 @@ export function transformFunctionToExpression(
 ): [lua.Expression, Scope] {
     assert(node.body);
 
+    if (node.asteriskToken && isAsyncFunction(node)) {
+        context.diagnostics.push(unsupportedAsyncGenerator(node));
+    }
+
     const type = context.checker.getTypeAtLocation(node);
     let functionContext: lua.Identifier | undefined;
 
@@ -258,8 +262,8 @@ export function transformFunctionToExpression(
         context,
         node.parameters,
         node.body,
-        spreadIdentifier,
-        node
+        node,
+        spreadIdentifier
     );
 
     const functionExpression = lua.createFunctionExpression(
@@ -343,9 +347,7 @@ export const transformFunctionDeclaration: FunctionVisitor<ts.FunctionDeclaratio
     // Remember symbols referenced in this function for hoisting later
     if (name.symbolId !== undefined) {
         const scope = peekScope(context);
-        if (!scope.functionDefinitions) {
-            scope.functionDefinitions = new Map();
-        }
+        scope.functionDefinitions ??= new Map();
 
         const functionInfo = { referencedSymbols: functionScope.referencedSymbols ?? new Map() };
         scope.functionDefinitions.set(name.symbolId, functionInfo);

@@ -3,8 +3,7 @@
         "rootDir": "..",
         "outDir": "dist",
         "paths": {
-            "myOtherPackage": ["../mypackage"],
-            "myOtherPackage/*": ["../mypackage/*"]
+            "alias": ["../other/alias"]
         }
     }
 }

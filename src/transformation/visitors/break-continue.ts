@@ -2,10 +2,22 @@ import * as ts from "typescript";
 import { LuaTarget } from "../../CompilerOptions";
 import * as lua from "../../LuaAST";
 import { FunctionVisitor } from "../context";
-import { findScope, LoopContinued, ScopeType } from "../utils/scope";
+import { findAsyncTryScopeBeforeLoop, findScope, LoopContinued, ScopeType } from "../utils/scope";
+import { isInAsyncFunction } from "../utils/typescript";
 
 export const transformBreakStatement: FunctionVisitor<ts.BreakStatement> = (breakStatement, context) => {
-    void context;
+    const tryScope = isInAsyncFunction(breakStatement) ? findAsyncTryScopeBeforeLoop(context) : undefined;
+    if (tryScope) {
+        tryScope.asyncTryHasBreak = true;
+        return [
+            lua.createAssignmentStatement(
+                lua.createIdentifier("____hasBroken"),
+                lua.createBooleanLiteral(true),
+                breakStatement
+            ),
+            lua.createReturnStatement([], breakStatement),
+        ];
+    }
     return lua.createBreakStatement(breakStatement);
 };
 
@@ -19,12 +31,26 @@ export const transformContinueStatement: FunctionVisitor<ts.ContinueStatement> =
         [LuaTarget.Lua52]: LoopContinued.WithGoto,
         [LuaTarget.Lua53]: LoopContinued.WithGoto,
         [LuaTarget.Lua54]: LoopContinued.WithGoto,
+        [LuaTarget.Lua55]: LoopContinued.WithGoto,
         [LuaTarget.LuaJIT]: LoopContinued.WithGoto,
         [LuaTarget.Luau]: LoopContinued.WithContinue,
     }[context.luaTarget];
 
     if (scope) {
         scope.loopContinued = continuedWith;
+    }
+
+    const tryScope = isInAsyncFunction(statement) ? findAsyncTryScopeBeforeLoop(context) : undefined;
+    if (tryScope) {
+        tryScope.asyncTryHasContinue = continuedWith;
+        return [
+            lua.createAssignmentStatement(
+                lua.createIdentifier("____hasContinued"),
+                lua.createBooleanLiteral(true),
+                statement
+            ),
+            lua.createReturnStatement([], statement),
+        ];
     }
 
     const label = `__continue${scope?.id ?? ""}`;

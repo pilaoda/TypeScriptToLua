@@ -71,6 +71,7 @@ export enum LuaTarget {
     Lua52 = "5.2",
     Lua53 = "5.3",
     Lua54 = "5.4",
+    Lua55 = "5.5",
     LuaJIT = "JIT",
     Luau = "Luau",
 }
@@ -100,10 +101,6 @@ export function validateOptions(options: CompilerOptions): ts.Diagnostic[] {
 
     if (options.jsx && options.jsx !== JsxEmit.React) {
         diagnostics.push(diagnosticFactories.unsupportedJsxEmit());
-    }
-
-    if (options.paths && !options.baseUrl) {
-        diagnostics.push(diagnosticFactories.pathsWithoutBaseUrl());
     }
 
     return diagnostics;

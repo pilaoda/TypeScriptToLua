@@ -235,7 +235,12 @@ export function transformOptionalChainWithCapture(
 
         context.addPrecedingStatements(
             lua.createIfStatement(
-                lua.createBinaryExpression(leftIdentifier, lua.createNilLiteral(), lua.SyntaxKind.InequalityOperator, tsNode),
+                lua.createBinaryExpression(
+                    leftIdentifier,
+                    lua.createNilLiteral(),
+                    lua.SyntaxKind.InequalityOperator,
+                    tsNode
+                ),
                 lua.createBlock(innerStatements),
                 undefined,
                 tsNode
@@ -267,7 +272,12 @@ export function transformOptionalChainWithCapture(
         // return result
         context.addPrecedingStatements(
             lua.createIfStatement(
-                lua.createBinaryExpression(leftIdentifier, lua.createNilLiteral(), lua.SyntaxKind.InequalityOperator, tsNode),
+                lua.createBinaryExpression(
+                    leftIdentifier,
+                    lua.createNilLiteral(),
+                    lua.SyntaxKind.InequalityOperator,
+                    tsNode
+                ),
                 lua.createBlock([
                     ...rightPrecedingStatements,
                     lua.createAssignmentStatement(resultIdentifier, rightExpression),

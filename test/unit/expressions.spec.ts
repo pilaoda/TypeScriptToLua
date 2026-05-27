@@ -96,6 +96,13 @@ test.each(supportedInAll)("Bitop [5.4] (%p)", input => {
         .expectLuaToMatchSnapshot();
 });
 
+test.each(supportedInAll)("Bitop [5.5] (%p)", input => {
+    util.testExpression(input)
+        .setOptions({ luaTarget: tstl.LuaTarget.Lua55, luaLibImport: tstl.LuaLibImportKind.None })
+        .disableSemanticCheck()
+        .expectLuaToMatchSnapshot();
+});
+
 test.each(unsupportedIn53And54)("Unsupported bitop 5.3 (%p)", input => {
     util.testExpression(input)
         .setOptions({ luaTarget: tstl.LuaTarget.Lua53, luaLibImport: tstl.LuaLibImportKind.None })
@@ -109,6 +116,35 @@ test.each(unsupportedIn53And54)("Unsupported bitop 5.4 (%p)", input => {
         .disableSemanticCheck()
         .expectDiagnosticsToMatchSnapshot([unsupportedRightShiftOperator.code]);
 });
+
+// Execution tests: verify >>> produces correct results matching JS semantics
+for (const expression of ["-5 >>> 0", "-1 >>> 0", "1 >>> 0", "-1 >>> 16", "255 >>> 4"]) {
+    util.testEachVersion(`Unsigned right shift execution (${expression})`, () => util.testExpression(expression), {
+        [tstl.LuaTarget.Universal]: false,
+        [tstl.LuaTarget.Lua50]: false, // No bit library in WASM runtime
+        [tstl.LuaTarget.Lua51]: false, // No bit library in WASM runtime
+        [tstl.LuaTarget.Lua52]: builder => builder.expectToMatchJsResult(),
+        [tstl.LuaTarget.Lua53]: builder => builder.expectToMatchJsResult(),
+        [tstl.LuaTarget.Lua54]: builder => builder.expectToMatchJsResult(),
+        [tstl.LuaTarget.Lua55]: builder => builder.expectToMatchJsResult(),
+        [tstl.LuaTarget.LuaJIT]: false, // Can't execute LuaJIT in tests
+        [tstl.LuaTarget.Luau]: false,
+    });
+}
+
+for (const code of ["let a = -5; a >>>= 0; return a;", "let a = -1; a >>>= 16; return a;"]) {
+    util.testEachVersion(`Unsigned right shift assignment execution (${code})`, () => util.testFunction(code), {
+        [tstl.LuaTarget.Universal]: false,
+        [tstl.LuaTarget.Lua50]: false, // No bit library in WASM runtime
+        [tstl.LuaTarget.Lua51]: false, // No bit library in WASM runtime
+        [tstl.LuaTarget.Lua52]: builder => builder.expectToMatchJsResult(),
+        [tstl.LuaTarget.Lua53]: builder => builder.expectToMatchJsResult(),
+        [tstl.LuaTarget.Lua54]: builder => builder.expectToMatchJsResult(),
+        [tstl.LuaTarget.Lua55]: builder => builder.expectToMatchJsResult(),
+        [tstl.LuaTarget.LuaJIT]: false, // Can't execute LuaJIT in tests
+        [tstl.LuaTarget.Luau]: false,
+    });
+}
 
 test.each(["1+1", "-1+1", "1*30+4", "1*(3+4)", "1*(3+4*2)", "10-(4+5)"])(
     "Binary expressions ordering parentheses (%p)",

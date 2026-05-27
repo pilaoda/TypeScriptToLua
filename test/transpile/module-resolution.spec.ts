@@ -4,7 +4,6 @@ import * as util from "../util";
 import * as ts from "typescript";
 import { BuildMode } from "../../src";
 import { normalizeSlashes } from "../../src/utils";
-import { pathsWithoutBaseUrl } from "../../src/transpilation/diagnostics";
 
 describe("basic module resolution", () => {
     const projectPath = path.resolve(__dirname, "module-resolution", "project-with-node-modules");
@@ -457,6 +456,7 @@ describe("module resolution should not try to resolve modules in noResolvePaths"
 
             export const result = b.foo();
         `
+            .addExtraFile("preload.d.ts", `declare module "preload" {}`)
             .addExtraFile("preload.lua", 'package.preload["ignoreme"] = function() return nil end')
             .addExtraFile(
                 "actualfile.ts",
@@ -598,7 +598,7 @@ test("module resolution uses baseURL to resolve imported files", () => {
                 return { baz = function() return "baz" end }
             `
         )
-        .setOptions({ baseUrl: "./myproject/mydeps" })
+        .setOptions({ baseUrl: "./myproject/mydeps", ignoreDeprecations: "6.0" })
         .expectToEqual({
             fooResult: "foo",
             barResult: "bar",
@@ -707,8 +707,16 @@ test("supports complicated paths configuration", () => {
         .expectToEqual({ foo: 314, bar: 271 });
 });
 
-test("paths without baseUrl is error", () => {
-    util.testFunction``.setOptions({ paths: {} }).expectToHaveDiagnostics([pathsWithoutBaseUrl.code]);
+test("paths mapping wins over sibling project file (TS resolution order)", () => {
+    const baseProjectPath = path.resolve(__dirname, "module-resolution", "paths-vs-project-file");
+    const projectPath = path.join(baseProjectPath, "program");
+    const projectTsConfig = path.join(projectPath, "tsconfig.json");
+    const mainFile = path.join(projectPath, "main.ts");
+
+    util.testProject(projectTsConfig)
+        .setMainFileName(mainFile)
+        .setOptions({ luaBundle: "bundle.lua", luaBundleEntry: mainFile })
+        .expectToEqual({ value: "paths-mapped" });
 });
 
 test("module resolution using plugin", () => {

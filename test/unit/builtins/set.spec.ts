@@ -100,7 +100,7 @@ test("set has false", () => {
 
 test("set has null", () => {
     util.testFunction`
-        let myset = new Set(["a", "c"]);
+        let myset = new Set<string | null>(["a", "c"]);
         return myset.has(null);
     `.expectToMatchJsResult();
 });
@@ -191,6 +191,48 @@ describe.each(iterationMethods)("set.%s() preserves insertion order", iterationM
             myset.delete("x");
 
             return [...myset.${iterationMethod}()];
+        `.expectToMatchJsResult();
+    });
+});
+
+describe.each(iterationMethods)("set.%s() handles mutation", iterationMethod => {
+    test("iterator persists after delete", () => {
+        util.testFunction`
+            const set1 = new Set<string | number>();
+            set1.add(42);
+            set1.add("forty two");
+
+            const iterator1 = set1.${iterationMethod}();
+            set1.delete(42);
+
+            return iterator1.next().value;
+        `.expectToMatchJsResult();
+    });
+
+    test("iterator with delete and add between iterations", () => {
+        util.testFunction`
+            const set = new Set([1, 2, 3]);
+            const iter = set.${iterationMethod}();
+            iter.next(); // 1
+            set.delete(2);
+            set.add(4);
+            const results: IteratorResult<any>[] = [];
+            let r = iter.next();
+            while (!r.done) { results.push({ done: r.done, value: r.value }); r = iter.next(); }
+            return results;
+        `.expectToMatchJsResult();
+    });
+
+    test("iterator does not restart after exhaustion", () => {
+        util.testFunction`
+            const set = new Set([1, 2]);
+            const iter = set.${iterationMethod}();
+            const results: boolean[] = [];
+            results.push(iter.next().done!);
+            results.push(iter.next().done!);
+            results.push(iter.next().done!); // should be done
+            results.push(iter.next().done!); // should still be done, not restart
+            return results;
         `.expectToMatchJsResult();
     });
 });

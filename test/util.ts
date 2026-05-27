@@ -51,7 +51,7 @@ function getLuaBindingsForVersion(target: tstl.LuaTarget): { lauxlib: LauxLib; l
 }
 
 export function assert(value: any, message?: string | Error): asserts value {
-    nativeAssert(value, message);
+    nativeAssert.ok(value, message);
 }
 
 export const formatCode = (...values: unknown[]) => values.map(e => stringify(e)).join(", ");
@@ -86,22 +86,21 @@ export function expectEachVersionExceptJit<T>(
         [tstl.LuaTarget.Lua52]: expectation,
         [tstl.LuaTarget.Lua53]: expectation,
         [tstl.LuaTarget.Lua54]: expectation,
+        [tstl.LuaTarget.Lua55]: expectation,
         [tstl.LuaTarget.LuaJIT]: false, // Exclude JIT
         [tstl.LuaTarget.Luau]: false,
     };
 }
 
-const memoize: MethodDecorator = (_target, _propertyKey, descriptor) => {
-    const originalFunction = descriptor.value as any;
+const memoize = (originalFunction: any) => {
     const memoized = new WeakMap();
-    descriptor.value = function (this: any, ...args: any[]): any {
+    return function (this: any, ...args: any[]): any {
         if (!memoized.has(this)) {
             memoized.set(this, originalFunction.apply(this, args));
         }
 
         return memoized.get(this);
-    } as any;
-    return descriptor;
+    };
 };
 
 export class ExecutionError extends Error {
@@ -185,12 +184,12 @@ export abstract class TestBuilder {
     }
 
     protected options: tstl.CompilerOptions = {
-        luaTarget: tstl.LuaTarget.Lua54,
+        luaTarget: tstl.LuaTarget.Lua55,
         noHeader: true,
         skipLibCheck: true,
         target: ts.ScriptTarget.ES2017,
         lib: ["lib.esnext.d.ts"],
-        moduleResolution: ts.ModuleResolutionKind.Node10,
+        moduleResolution: ts.ModuleResolutionKind.Bundler,
         resolveJsonModule: true,
         sourceMap: true,
     };
@@ -472,7 +471,7 @@ export abstract class TestBuilder {
         // Main file
         const mainFile = this.getMainLuaCodeChunk();
 
-        const luaTarget = this.options.luaTarget ?? tstl.LuaTarget.Lua54;
+        const luaTarget = this.options.luaTarget ?? tstl.LuaTarget.Lua55;
         const { lauxlib, lua, lualib } = getLuaBindingsForVersion(luaTarget);
 
         const L = lauxlib.luaL_newstate();
@@ -590,8 +589,9 @@ end)());`;
             const moduleExports = {};
             globalContext.exports = moduleExports;
             globalContext.module = { exports: moduleExports };
+            const baseName = fileName.replace("./", "");
             const transpiledExtraFile = transpiledFiles.find(({ sourceFiles }) =>
-                sourceFiles.some(f => f.fileName === fileName.replace("./", "") + ".ts")
+                sourceFiles.some(f => f.fileName === baseName + ".ts" || f.fileName === baseName + "/index.ts")
             );
 
             if (transpiledExtraFile?.js) {

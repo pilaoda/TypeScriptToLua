@@ -31,13 +31,16 @@ export enum LoopContinued {
 export interface Scope {
     type: ScopeType;
     id: number;
-    node?: ts.Node;
+    node: ts.Node;
     referencedSymbols?: Map<lua.SymbolId, ts.Node[]>;
     variableDeclarations?: lua.VariableDeclarationStatement[];
     functionDefinitions?: Map<lua.SymbolId, FunctionDefinitionInfo>;
     importStatements?: lua.Statement[];
     loopContinued?: LoopContinued;
     functionReturned?: boolean;
+    asyncTryHasReturn?: boolean;
+    asyncTryHasBreak?: boolean;
+    asyncTryHasContinue?: LoopContinued;
 }
 
 export interface HoistingResult {
@@ -60,9 +63,7 @@ export function markSymbolAsReferencedInCurrentScopes(
     identifier: ts.Identifier
 ): void {
     for (const scope of context.scopeStack) {
-        if (!scope.referencedSymbols) {
-            scope.referencedSymbols = new Map();
-        }
+        scope.referencedSymbols ??= new Map();
 
         const references = getOrUpdate(scope.referencedSymbols, symbolId, () => []);
         references.push(identifier);
@@ -86,10 +87,26 @@ export function findScope(context: TransformationContext, scopeTypes: ScopeType)
     }
 }
 
-export function addScopeVariableDeclaration(scope: Scope, declaration: lua.VariableDeclarationStatement) {
-    if (!scope.variableDeclarations) {
-        scope.variableDeclarations = [];
+export function findAsyncTryScopeInStack(context: TransformationContext): Scope | undefined {
+    for (const scope of walkScopesUp(context)) {
+        if (scope.type === ScopeType.Function) return undefined;
+        if (scope.type === ScopeType.Try || scope.type === ScopeType.Catch) return scope;
     }
+    return undefined;
+}
+
+/** Like findAsyncTryScopeInStack, but also stops at Loop boundaries. */
+export function findAsyncTryScopeBeforeLoop(context: TransformationContext): Scope | undefined {
+    for (const scope of walkScopesUp(context)) {
+        if (scope.type === ScopeType.Function || scope.type === ScopeType.Loop) return undefined;
+        if (scope.type === ScopeType.Try || scope.type === ScopeType.Catch) return scope;
+    }
+    return undefined;
+}
+
+export function addScopeVariableDeclaration(scope: Scope, declaration: lua.VariableDeclarationStatement) {
+    scope.variableDeclarations ??= [];
+
     scope.variableDeclarations.push(declaration);
 }
 
@@ -102,7 +119,7 @@ function isHoistableFunctionDeclaredInScope(symbol: ts.Symbol, scopeNode: ts.Nod
 // Checks for references to local functions which haven't been defined yet,
 // and thus will be hoisted above the current position.
 export function hasReferencedUndefinedLocalFunction(context: TransformationContext, scope: Scope) {
-    if (!scope.referencedSymbols || !scope.node) {
+    if (!scope.referencedSymbols) {
         return false;
     }
     for (const [symbolId, nodes] of scope.referencedSymbols) {
@@ -128,10 +145,6 @@ export function hasReferencedSymbol(context: TransformationContext, scope: Scope
         }
     }
     return false;
-}
-
-export function isFunctionScopeWithDefinition(scope: Scope): scope is Scope & { node: ts.SignatureDeclaration } {
-    return scope.node !== undefined && ts.isFunctionLike(scope.node);
 }
 
 export function separateHoistedStatements(context: TransformationContext, statements: lua.Statement[]): HoistingResult {

@@ -10,6 +10,16 @@ test.each([
     util.testExpression`Object.assign(${util.formatCode(initial)}, ${argsString})`.expectToMatchJsResult();
 });
 
+test.each([
+    "Object.assign({}, false)",
+    "Object.assign({}, null)",
+    "Object.assign({}, undefined)",
+    "Object.assign({}, null, undefined)",
+    "Object.assign({ a: 1 }, false, { b: 2 })",
+])("Object.assign skips non-object sources (%p)", expression => {
+    util.testExpression(expression).expectToMatchJsResult();
+});
+
 test.each([{}, { abc: 3 }, { abc: 3, def: "xyz" }])("Object.entries (%p)", obj => {
     const testBuilder = util.testExpressionTemplate`Object.entries(${obj})`;
     // Need custom matcher because order is not guaranteed in neither JS nor Lua
@@ -147,7 +157,7 @@ describe("Object.defineProperty", () => {
 
     test.each(trueFalseTests)("configurable (%p)", value => {
         util.testFunction`
-            const foo = { bar: true };
+            const foo: { bar?: boolean } = { bar: true };
             Object.defineProperty(foo, "bar", { configurable: ${value} });
             try { delete foo.bar } catch {};
             return foo.bar;
@@ -196,6 +206,81 @@ describe("Object.defineProperty", () => {
             return { prop: foo.bar, err };
         `.expectToMatchJsResult();
     });
+
+    // https://github.com/TypeScriptToLua/TypeScriptToLua/issues/1625
+    test("instance isolation", () => {
+        util.testFunction`
+            class Test {
+                declare obj: object;
+                constructor() {
+                    Object.defineProperty(this, "obj", { value: {}, writable: true, configurable: true });
+                }
+            }
+            const t1 = new Test();
+            const t2 = new Test();
+            return t1.obj === t2.obj;
+        `.expectToMatchJsResult();
+    });
+
+    test("instance isolation with three instances", () => {
+        util.testFunction`
+            class Test {
+                declare obj: object;
+                constructor() {
+                    Object.defineProperty(this, "obj", { value: {}, writable: true, configurable: true });
+                }
+            }
+            const t1 = new Test();
+            const t2 = new Test();
+            const t3 = new Test();
+            return [t1.obj === t2.obj, t1.obj === t3.obj, t2.obj === t3.obj];
+        `.expectToMatchJsResult();
+    });
+
+    test("instance isolation with mutation", () => {
+        util.testFunction`
+            class Test {
+                declare value: number;
+                constructor(v: number) {
+                    Object.defineProperty(this, "value", { value: v, writable: true, configurable: true });
+                }
+            }
+            const t1 = new Test(1);
+            const t2 = new Test(2);
+            return [t1.value, t2.value];
+        `.expectToMatchJsResult();
+    });
+
+    test("instance isolation with multiple properties", () => {
+        util.testFunction`
+            class Test {
+                declare a: string;
+                declare b: string;
+                constructor(a: string, b: string) {
+                    Object.defineProperty(this, "a", { value: a, writable: true, configurable: true });
+                    Object.defineProperty(this, "b", { value: b, writable: true, configurable: true });
+                }
+            }
+            const t1 = new Test("x", "y");
+            const t2 = new Test("p", "q");
+            return [t1.a, t1.b, t2.a, t2.b];
+        `.expectToMatchJsResult();
+    });
+
+    test("instance isolation preserves prototype methods", () => {
+        util.testFunction`
+            class Test {
+                declare val: number;
+                constructor(v: number) {
+                    Object.defineProperty(this, "val", { value: v, writable: true, configurable: true });
+                }
+                getVal() { return this.val; }
+            }
+            const t1 = new Test(10);
+            const t2 = new Test(20);
+            return [t1.getVal(), t2.getVal()];
+        `.expectToMatchJsResult();
+    });
 });
 
 describe("Object.getOwnPropertyDescriptor", () => {
@@ -221,7 +306,7 @@ describe("Object.getOwnPropertyDescriptors", () => {
 describe("delete from object", () => {
     test("delete from object", () => {
         util.testFunction`
-            const obj = { foo: "bar", bar: "baz" };
+            const obj: { foo?: string, bar: string } = { foo: "bar", bar: "baz" };
             return [delete obj["foo"], obj];
         `.expectToMatchJsResult();
     });
@@ -236,7 +321,7 @@ describe("delete from object", () => {
     // https://github.com/TypeScriptToLua/TypeScriptToLua/issues/993
     test("delete from object with metatable", () => {
         util.testFunction`
-        const obj = { foo: "bar", bar: "baz" };
+        const obj: { foo?: string, bar: string } = { foo: "bar", bar: "baz" };
         setmetatable(obj, {});
         return [delete obj["foo"], obj];
     `
@@ -268,7 +353,7 @@ describe("delete from object", () => {
 describe("Object.groupBy", () => {
     test("empty", () => {
         util.testFunction`
-            const array = [];
+            const array: number[] = [];
 
             return Object.groupBy(array, (num, index) => {
                 return num % 2 === 0 ? "even": "odd";
