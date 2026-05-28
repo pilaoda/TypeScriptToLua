@@ -51,7 +51,8 @@ export function resolvePlugin(
 
     let resolved: string;
     try {
-        resolved = resolve.sync(query, { basedir, extensions: [".js", ".ts", ".tsx"] });
+        const preserveSymlinks = process.execArgv.includes("--preserve-symlinks");
+        resolved = resolve.sync(query, { basedir, preserveSymlinks, extensions: [".js", ".ts", ".tsx"] });
     } catch (err) {
         if (!isModuleNotFoundError(err)) throw err;
         return { error: diagnosticFactories.couldNotResolveFrom(kind, query, basedir) };
