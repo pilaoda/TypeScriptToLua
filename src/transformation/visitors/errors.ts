@@ -404,7 +404,7 @@ function transformCatchClause(
 // if ____hasReturnOrError then
 //     return ____returnValue
 // end
-function createReturnIfHasReturnOrError(
+export function createReturnIfHasReturnOrError(
     context: TransformationContext,
     statement: ts.TryStatement,
     hasReturnOrErrorIdentifier: lua.Identifier,
