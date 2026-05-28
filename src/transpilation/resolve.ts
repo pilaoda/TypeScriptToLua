@@ -153,14 +153,11 @@ class ResolutionContext {
     private formatPathToFile(targetPath: string, required: ProcessedFile) {
         const isRelative = ["/", "./", "../"].some(p => targetPath.startsWith(p));
 
-        // // If the import is relative, always resolve it relative to the requiring file
-        // // If the import is not relative, resolve it relative to options.baseUrl if it is set
         const fileDirectory = path.dirname(required.fileName);
-        const relativeTo = isRelative ? fileDirectory : this.options.baseUrl ?? fileDirectory;
+        const configDir = this.options.configFilePath ? path.dirname(this.options.configFilePath) : undefined;
+        const relativeTo = isRelative ? fileDirectory : this.options.baseUrl ?? configDir ?? fileDirectory;
 
-        // // Check if file is a file in the project
-        const resolvedPath = path.join(relativeTo, targetPath);
-        return resolvedPath;
+        return path.join(relativeTo, targetPath);
     }
 
     private processDependency(dependencyPath: string): void {
