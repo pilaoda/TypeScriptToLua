@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as path from "path";
 import { EmitHost, transpileProject } from "./transpilation";
 import * as lua from "./LuaAST";
@@ -279,26 +280,46 @@ export function loadImportedLualibFeatures(
 }
 
 const recompileLualibCache = new WeakMap<EmitHost, TranspiledFile[]>();
+let lastRecompile: { key: string; files: TranspiledFile[] } | undefined;
+
+function buildRecompileCacheKey(sourceOptions: CompilerOptions): string {
+    const plugins = (sourceOptions.luaPlugins ?? [])
+        .filter(p => !p.skipRecompileLuaLib)
+        .map(p => {
+            try {
+                return { name: p.name, mtime: fs.statSync(p.name).mtimeMs };
+            } catch {
+                return { name: p.name };
+            }
+        });
+    return JSON.stringify({ luaTarget: sourceOptions.luaTarget, plugins });
+}
 
 function recompileLuaLibFiles(sourceOptions: CompilerOptions, emitHost: EmitHost): TranspiledFile[] {
     let transpiledFiles = recompileLualibCache.get(emitHost);
     if (!transpiledFiles) {
-        const tsconfigPath =
-            sourceOptions.luaTarget === LuaTarget.Lua50
-                ? path.join(__dirname, "../src/lualib/tsconfig.lua50.json")
-                : path.join(__dirname, "../src/lualib/tsconfig.json");
-        const config = parseConfigFileWithSystem(tsconfigPath);
-        const options = config.options;
-        const sourcePlugins = (sourceOptions.luaPlugins ?? []).filter(p => !p.skipRecompileLuaLib);
-        options.luaPlugins = [...(options.luaPlugins ?? []), ...sourcePlugins];
+        const key = buildRecompileCacheKey(sourceOptions);
+        if (lastRecompile?.key === key) {
+            transpiledFiles = lastRecompile.files;
+        } else {
+            const tsconfigPath =
+                sourceOptions.luaTarget === LuaTarget.Lua50
+                    ? path.join(__dirname, "../src/lualib/tsconfig.lua50.json")
+                    : path.join(__dirname, "../src/lualib/tsconfig.json");
+            const config = parseConfigFileWithSystem(tsconfigPath);
+            const options = config.options;
+            const sourcePlugins = (sourceOptions.luaPlugins ?? []).filter(p => !p.skipRecompileLuaLib);
+            options.luaPlugins = [...(options.luaPlugins ?? []), ...sourcePlugins];
 
-        const collector = createEmitOutputCollector(options.extension);
-        const reportDiagnostic = createDiagnosticReporter(false);
+            const collector = createEmitOutputCollector(options.extension);
+            const reportDiagnostic = createDiagnosticReporter(false);
 
-        const { diagnostics } = transpileProject(tsconfigPath, options, collector.writeFile);
-        diagnostics.forEach(reportDiagnostic);
+            const { diagnostics } = transpileProject(tsconfigPath, options, collector.writeFile);
+            diagnostics.forEach(reportDiagnostic);
 
-        transpiledFiles = collector.files;
+            transpiledFiles = collector.files;
+            lastRecompile = { key, files: transpiledFiles };
+        }
         recompileLualibCache.set(emitHost, transpiledFiles);
     }
 
