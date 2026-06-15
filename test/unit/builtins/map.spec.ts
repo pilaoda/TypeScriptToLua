@@ -319,6 +319,144 @@ describe.each(iterationMethods)("map.%s() handles mutation", iterationMethod => 
             return { visited, size: map.size };
         `.expectToMatchJsResult();
     });
+
+    test("for-of delete current and next entry", () => {
+        util.testFunction`
+            const map = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
+            const visited: string[] = [];
+            for (const [key] of map) {
+                visited.push(key);
+                if (key === "a") { map.delete("a"); map.delete("b"); }
+            }
+            return { visited, size: map.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("for-of delete current and all remaining entries", () => {
+        util.testFunction`
+            const map = new Map<string, number>([["a", 1], ["b", 2], ["c", 3], ["d", 4]]);
+            const visited: string[] = [];
+            for (const [key] of map) {
+                visited.push(key);
+                if (key === "a") { map.delete("a"); map.delete("b"); map.delete("c"); }
+            }
+            return { visited, size: map.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("for-of delete current and next then re-add next", () => {
+        util.testFunction`
+            const map = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
+            const visited: string[] = [];
+            for (const [key] of map) {
+                visited.push(key);
+                if (key === "a") { map.delete("a"); map.delete("b"); map.set("b", 9); }
+            }
+            return { visited, size: map.size };
+        `.expectToMatchJsResult();
+    });
+});
+
+// Adapted from V8's collection-iterator.js (TestSetIteratorMutations2/3)
+// https://chromium.googlesource.com/v8/v8/+/main/test/mjsunit/es6/collection-iterator.js
+describe("map iterator stress (v8-style)", () => {
+    test("iterator survives mass add+delete between next() calls", () => {
+        util.testFunction`
+            const m = new Map<number, number>();
+            m.set(1, 11);
+            m.set(2, 22);
+            const iter = m.entries();
+            const r1 = iter.next();
+            m.delete(2);
+            m.delete(1);
+            for (let x = 2; x < 500; ++x) m.set(x, x * 10);
+            for (let x = 2; x < 500; ++x) m.delete(x);
+            for (let x = 2; x < 1000; ++x) m.set(x, x * 10);
+            const r2 = iter.next();
+            for (let x = 1001; x < 2000; ++x) m.set(x, x * 10);
+            m.delete(3);
+            for (let x = 6; x < 2000; ++x) m.delete(x);
+            const r3 = iter.next();
+            m.delete(5);
+            const r4 = iter.next();
+            return [r1.value, r2.value, r3.value, r4.done];
+        `.expectToMatchJsResult();
+    });
+
+    test("delete all then re-add, iterator finds re-added", () => {
+        util.testFunction`
+            const m = new Map<number, number>();
+            m.set(1, 11);
+            m.set(2, 22);
+            const iter = m.entries();
+            const r1 = iter.next();
+            m.delete(2);
+            m.delete(1);
+            m.set(2, 99);
+            const r2 = iter.next();
+            const r3 = iter.next();
+            return [r1.value, r2.value, r3.done];
+        `.expectToMatchJsResult();
+    });
+
+    test("mass delete during for-of", () => {
+        util.testFunction`
+            const m = new Map<number, number>();
+            for (let i = 0; i < 100; i++) m.set(i, i);
+            const visited: number[] = [];
+            for (const [k] of m) {
+                visited.push(k);
+                m.delete(k);
+            }
+            return { count: visited.length, size: m.size, first: visited[0], last: visited[visited.length - 1] };
+        `.expectToMatchJsResult();
+    });
+
+    test("mass delete every other during for-of", () => {
+        util.testFunction`
+            const m = new Map<number, number>();
+            for (let i = 0; i < 100; i++) m.set(i, i);
+            const visited: number[] = [];
+            for (const [k] of m) {
+                visited.push(k);
+                m.delete(k);
+                m.delete(k + 1);
+            }
+            return { count: visited.length, size: m.size };
+        `.expectToMatchJsResult();
+    });
+});
+
+describe("map memory", () => {
+    test("deleting primitive keys should not leak memory", () => {
+        const result = util.testFunction`
+            /** @noSelf */ declare function collectgarbage(opt?: string): number;
+            collectgarbage(); collectgarbage();
+            const baseline = collectgarbage("count");
+
+            const map = new Map<string, number>();
+            for (let round = 0; round < 10; round++) {
+                const keys: string[] = [];
+                for (let i = 0; i < 1000; i++) {
+                    const k = "k" + (round * 1000 + i);
+                    keys.push(k);
+                    map.set(k, i);
+                }
+                for (const k of keys) { map.delete(k); }
+            }
+
+            collectgarbage(); collectgarbage();
+            const after = collectgarbage("count");
+
+            return {
+                size: map.size,
+                retained: Math.floor(after - baseline),
+            };
+        `.getLuaExecutionResult();
+        // console.log("memory:", result);
+        expect(result.size).toBe(0);
+        expect(result.retained).toBeLessThan(100);
+    });
 });
 
 describe("Map.groupBy", () => {

@@ -283,6 +283,156 @@ describe.each(iterationMethods)("set.%s() handles mutation", iterationMethod => 
             return { visited, size: set.size };
         `.expectToMatchJsResult();
     });
+
+    test("for-of delete current and next entry", () => {
+        util.testFunction`
+            const set = new Set([1, 2, 3]);
+            const visited: number[] = [];
+            for (const value of set) {
+                visited.push(value);
+                if (value === 1) { set.delete(1); set.delete(2); }
+            }
+            return { visited, size: set.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("for-of delete current and all remaining entries", () => {
+        util.testFunction`
+            const set = new Set([1, 2, 3, 4]);
+            const visited: number[] = [];
+            for (const value of set) {
+                visited.push(value);
+                if (value === 1) { set.delete(1); set.delete(2); set.delete(3); }
+            }
+            return { visited, size: set.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("for-of delete current and next then re-add next", () => {
+        util.testFunction`
+            const set = new Set([1, 2, 3]);
+            const visited: number[] = [];
+            for (const value of set) {
+                visited.push(value);
+                if (value === 1) { set.delete(1); set.delete(2); set.add(2); }
+            }
+            return { visited, size: set.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("for-of delete then re-add same value", () => {
+        util.testFunction`
+            const set = new Set([1, 2, 3]);
+            const visited: number[] = [];
+            for (const value of set) {
+                visited.push(value);
+                if (value === 1) { set.delete(2); set.add(2); }
+            }
+            return { visited, size: set.size };
+        `.expectToMatchJsResult();
+    });
+});
+
+// Adapted from V8's collection-iterator.js (TestSetIteratorMutations2/3)
+// https://chromium.googlesource.com/v8/v8/+/main/test/mjsunit/es6/collection-iterator.js
+describe("set iterator stress (v8-style)", () => {
+    test("iterator survives mass add+delete between next() calls", () => {
+        util.testFunction`
+            const s = new Set<number>();
+            s.add(1);
+            s.add(2);
+            const iter = s.values();
+            const r1 = iter.next();
+            s.delete(2);
+            s.delete(1);
+            for (let x = 2; x < 500; ++x) s.add(x);
+            for (let x = 2; x < 500; ++x) s.delete(x);
+            for (let x = 2; x < 1000; ++x) s.add(x);
+            const r2 = iter.next();
+            for (let x = 1001; x < 2000; ++x) s.add(x);
+            s.delete(3);
+            for (let x = 6; x < 2000; ++x) s.delete(x);
+            const r3 = iter.next();
+            s.delete(5);
+            const r4 = iter.next();
+            return [r1.value, r2.value, r3.value, r4.done];
+        `.expectToMatchJsResult();
+    });
+
+    test("delete all then re-add, iterator finds re-added", () => {
+        util.testFunction`
+            const s = new Set<number>();
+            s.add(1);
+            s.add(2);
+            const iter = s.values();
+            const r1 = iter.next();
+            s.delete(2);
+            s.delete(1);
+            s.add(2);
+            const r2 = iter.next();
+            const r3 = iter.next();
+            return [r1.value, r2.value, r3.done];
+        `.expectToMatchJsResult();
+    });
+
+    test("mass delete during for-of", () => {
+        util.testFunction`
+            const s = new Set<number>();
+            for (let i = 0; i < 100; i++) s.add(i);
+            const visited: number[] = [];
+            for (const v of s) {
+                visited.push(v);
+                s.delete(v);
+            }
+            return { count: visited.length, size: s.size, first: visited[0], last: visited[visited.length - 1] };
+        `.expectToMatchJsResult();
+    });
+
+    test("mass delete every other during for-of", () => {
+        util.testFunction`
+            const s = new Set<number>();
+            for (let i = 0; i < 100; i++) s.add(i);
+            const visited: number[] = [];
+            for (const v of s) {
+                visited.push(v);
+                s.delete(v);
+                s.delete(v + 1);
+            }
+            return { count: visited.length, size: s.size };
+        `.expectToMatchJsResult();
+    });
+});
+
+describe("set memory", () => {
+    test("deleting primitive values should not leak memory", () => {
+        const result = util.testFunction`
+            /** @noSelf */ declare function collectgarbage(opt?: string): number;
+            collectgarbage(); collectgarbage();
+            const baseline = collectgarbage("count");
+
+            const set = new Set<string>();
+            for (let round = 0; round < 10; round++) {
+                const keys: string[] = [];
+                for (let i = 0; i < 1000; i++) {
+                    const k = "k" + (round * 1000 + i);
+                    keys.push(k);
+                    set.add(k);
+                }
+                for (const k of keys) { set.delete(k); }
+            }
+
+            collectgarbage(); collectgarbage();
+            const after = collectgarbage("count");
+
+            return {
+                size: set.size,
+                retained: Math.floor(after - baseline),
+            };
+        `.getLuaExecutionResult();
+        // console.log("memory:", result);
+        expect(result.size).toBe(0);
+        expect(result.retained).toBeLessThan(100);
+    });
 });
 
 test("instanceof Set without creating set", () => {
