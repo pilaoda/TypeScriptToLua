@@ -106,13 +106,15 @@ export class Set<T extends AnyNotNil> {
                 this.previousKey.set(next, previous);
             }
 
-            // TODO: compact when tombstones exceed live entries
+            // Compaction deferred: version chain needed for safe multi-compaction
         }
 
         return contains;
     }
 
     private compact(): void {
+        const oldNextKey = this.nextKey;
+        const oldPreviousKey = this.previousKey;
         const newNextKey = new LuaTable<T, T>();
         const newPreviousKey = new LuaTable<T, T>();
         setmetatable(newNextKey, { __mode: "k" });
@@ -120,11 +122,19 @@ export class Set<T extends AnyNotNil> {
 
         let k = this.firstKey;
         while (k !== undefined) {
-            const n = this.nextKey.get(k);
+            const n = oldNextKey.get(k);
             if (n !== undefined) {
                 newNextKey.set(k, n);
                 newPreviousKey.set(n, k);
             }
+            k = n;
+        }
+
+        k = this.firstKey;
+        while (k !== undefined) {
+            const n = newNextKey.get(k);
+            oldNextKey.set(k, undefined!);
+            oldPreviousKey.set(k, undefined!);
             k = n;
         }
 

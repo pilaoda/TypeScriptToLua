@@ -84,7 +84,7 @@ export class Map<K extends AnyNotNil, V> {
             // Don't clear nextKey[key] or previousKey[key]:
             // active iterators need forward pointers to traverse past deleted entries
 
-            // TODO: compact when tombstones exceed live entries
+            // Compaction deferred: version chain needed for safe multi-compaction
         }
         this.items.set(key, undefined!);
 
@@ -92,18 +92,31 @@ export class Map<K extends AnyNotNil, V> {
     }
 
     private compact(): void {
+        const oldNextKey = this.nextKey;
+        const oldPreviousKey = this.previousKey;
         const newNextKey = new LuaTable<K, K>();
         const newPreviousKey = new LuaTable<K, K>();
         setmetatable(newNextKey, { __mode: "k" });
         setmetatable(newPreviousKey, { __mode: "k" });
 
+        // Copy live chain to new tables
         let k = this.firstKey;
         while (k !== undefined) {
-            const n = this.nextKey.get(k);
+            const n = oldNextKey.get(k);
             if (n !== undefined) {
                 newNextKey.set(k, n);
                 newPreviousKey.set(n, k);
             }
+            k = n;
+        }
+
+        // Clear live entries from old tables so old iterators
+        // fall through to getCurrentNextKey() at live keys
+        k = this.firstKey;
+        while (k !== undefined) {
+            const n = newNextKey.get(k);
+            oldNextKey.set(k, undefined!);
+            oldPreviousKey.set(k, undefined!);
             k = n;
         }
 
