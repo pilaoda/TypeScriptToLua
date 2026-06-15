@@ -4,14 +4,12 @@ export class Set<T extends AnyNotNil> {
 
     public size = 0;
 
-    private firstKey: T | undefined;
-    private lastKey: T | undefined;
-    private nextKey = new LuaTable<T, T>();
-    private previousKey = new LuaTable<T, T>();
-    private deletedNextKey = new LuaTable<T, T>();
+    // Flat array storage (1-based indices for Lua)
+    private keyIndex = new LuaTable<T, number>();
+    private orderedKeys = new LuaTable<number, T>();
+    private nextSlot = 1;
 
     constructor(values?: Iterable<T> | T[]) {
-        setmetatable(this.deletedNextKey, { __mode: "k" });
         if (values === undefined) return;
 
         const iterable = values as Iterable<T>;
@@ -34,68 +32,30 @@ export class Set<T extends AnyNotNil> {
     }
 
     public add(value: T): Set<T> {
-        const isNewValue = !this.has(value);
-        if (isNewValue) {
+        if (!this.has(value)) {
             this.size++;
-            this.deletedNextKey.delete(value);
+            const idx = this.nextSlot;
+            this.nextSlot = idx + 1;
+            this.keyIndex.set(value, idx);
+            this.orderedKeys.set(idx, value);
         }
-
-        // Do order bookkeeping
-        if (this.firstKey === undefined) {
-            this.firstKey = value;
-            this.lastKey = value;
-        } else if (isNewValue) {
-            this.nextKey.set(this.lastKey!, value);
-            this.previousKey.set(value, this.lastKey!);
-            this.lastKey = value;
-        }
-
         return this;
     }
 
     public clear(): void {
-        this.nextKey = new LuaTable();
-        this.previousKey = new LuaTable();
-        this.deletedNextKey = new LuaTable();
-        setmetatable(this.deletedNextKey, { __mode: "k" });
-        this.firstKey = undefined;
-        this.lastKey = undefined;
+        this.keyIndex = new LuaTable();
+        this.orderedKeys = new LuaTable();
+        this.nextSlot = 1;
         this.size = 0;
     }
 
     public delete(value: T): boolean {
-        const contains = this.has(value);
-        if (contains) {
-            this.size--;
-
-            // Do order bookkeeping
-            const next = this.nextKey.get(value);
-            const previous = this.previousKey.get(value);
-
-            // Save forward pointer for active iterators before clearing
-            if (next !== undefined) {
-                this.deletedNextKey.set(value, next);
-            }
-
-            if (next !== undefined && previous !== undefined) {
-                this.nextKey.set(previous, next);
-                this.previousKey.set(next, previous);
-            } else if (next !== undefined) {
-                this.firstKey = next;
-                this.previousKey.set(next, undefined!);
-            } else if (previous !== undefined) {
-                this.lastKey = previous;
-                this.nextKey.set(previous, undefined!);
-            } else {
-                this.firstKey = undefined;
-                this.lastKey = undefined;
-            }
-
-            this.nextKey.set(value, undefined!);
-            this.previousKey.set(value, undefined!);
-        }
-
-        return contains;
+        const idx = this.keyIndex.get(value);
+        if (idx === undefined) return false;
+        this.size--;
+        this.keyIndex.set(value, undefined!);
+        this.orderedKeys.set(idx, undefined!);
+        return true;
     }
 
     public forEach(callback: (value: T, key: T, set: Set<T>) => any): void {
@@ -105,7 +65,7 @@ export class Set<T extends AnyNotNil> {
     }
 
     public has(value: T): boolean {
-        return this.nextKey.get(value) !== undefined || this.lastKey === value;
+        return this.keyIndex.get(value) !== undefined;
     }
 
     public [Symbol.iterator](): IterableIterator<T> {
@@ -113,64 +73,65 @@ export class Set<T extends AnyNotNil> {
     }
 
     public entries(): IterableIterator<[T, T]> {
-        const getFirstKey = () => this.firstKey;
-        const { nextKey, deletedNextKey } = this;
-        let key: T | undefined;
-        let started = false;
+        const { orderedKeys } = this;
+        const getNextSlot = () => this.nextSlot;
+        let idx = 0;
         return {
             [Symbol.iterator](): IterableIterator<[T, T]> {
                 return this;
             },
             next(): IteratorResult<[T, T]> {
-                if (!started) {
-                    started = true;
-                    key = getFirstKey();
-                } else {
-                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
+                idx++;
+                while (idx < getNextSlot() && orderedKeys.get(idx) === undefined) {
+                    idx++;
                 }
-                return { done: !key, value: [key!, key!] as [T, T] };
+                if (idx >= getNextSlot()) {
+                    return { done: true, value: undefined! };
+                }
+                const val = orderedKeys.get(idx)!;
+                return { done: false, value: [val, val] as [T, T] };
             },
         };
     }
 
     public keys(): IterableIterator<T> {
-        const getFirstKey = () => this.firstKey;
-        const { nextKey, deletedNextKey } = this;
-        let key: T | undefined;
-        let started = false;
+        const { orderedKeys } = this;
+        const getNextSlot = () => this.nextSlot;
+        let idx = 0;
         return {
             [Symbol.iterator](): IterableIterator<T> {
                 return this;
             },
             next(): IteratorResult<T> {
-                if (!started) {
-                    started = true;
-                    key = getFirstKey();
-                } else {
-                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
+                idx++;
+                while (idx < getNextSlot() && orderedKeys.get(idx) === undefined) {
+                    idx++;
                 }
-                return { done: !key, value: key! };
+                if (idx >= getNextSlot()) {
+                    return { done: true, value: undefined! };
+                }
+                return { done: false, value: orderedKeys.get(idx)! };
             },
         };
     }
 
     public values(): IterableIterator<T> {
-        const getFirstKey = () => this.firstKey;
-        const { nextKey, deletedNextKey } = this;
-        let key: T | undefined;
-        let started = false;
+        const { orderedKeys } = this;
+        const getNextSlot = () => this.nextSlot;
+        let idx = 0;
         return {
             [Symbol.iterator](): IterableIterator<T> {
                 return this;
             },
             next(): IteratorResult<T> {
-                if (!started) {
-                    started = true;
-                    key = getFirstKey();
-                } else {
-                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
+                idx++;
+                while (idx < getNextSlot() && orderedKeys.get(idx) === undefined) {
+                    idx++;
                 }
-                return { done: !key, value: key! };
+                if (idx >= getNextSlot()) {
+                    return { done: true, value: undefined! };
+                }
+                return { done: false, value: orderedKeys.get(idx)! };
             },
         };
     }
