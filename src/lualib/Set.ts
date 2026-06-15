@@ -1,3 +1,5 @@
+const NEXT_VERSION = {};
+
 export class Set<T extends AnyNotNil> {
     public static [Symbol.species] = Set;
     public [Symbol.toStringTag] = "Set";
@@ -106,7 +108,9 @@ export class Set<T extends AnyNotNil> {
                 this.previousKey.set(next, previous);
             }
 
-            // Compaction deferred: version chain needed for safe multi-compaction
+            if (this.deletedCount > this.size) {
+                this.compact();
+            }
         }
 
         return contains;
@@ -114,7 +118,6 @@ export class Set<T extends AnyNotNil> {
 
     private compact(): void {
         const oldNextKey = this.nextKey;
-        const oldPreviousKey = this.previousKey;
         const newNextKey = new LuaTable<T, T>();
         const newPreviousKey = new LuaTable<T, T>();
         setmetatable(newNextKey, { __mode: "k" });
@@ -130,13 +133,7 @@ export class Set<T extends AnyNotNil> {
             k = n;
         }
 
-        k = this.firstKey;
-        while (k !== undefined) {
-            const n = newNextKey.get(k);
-            oldNextKey.set(k, undefined!);
-            oldPreviousKey.set(k, undefined!);
-            k = n;
-        }
+        oldNextKey.set(NEXT_VERSION as any, newNextKey as any);
 
         this.nextKey = newNextKey;
         this.previousKey = newPreviousKey;
@@ -159,9 +156,8 @@ export class Set<T extends AnyNotNil> {
 
     public entries(): IterableIterator<[T, T]> {
         const getFirstKey = () => this.firstKey;
-        const getCurrentNextKey = () => this.nextKey;
-        const capturedNextKey = this.nextKey;
         const { members } = this;
+        let table = this.nextKey;
         let key: T | undefined;
         let started = false;
         return {
@@ -169,24 +165,31 @@ export class Set<T extends AnyNotNil> {
                 return this;
             },
             next(): IteratorResult<[T, T]> {
+                let transitioned = false;
+                while (table.get(NEXT_VERSION as any) !== undefined) {
+                    if (started) {
+                        const prevKey = key;
+                        while (key !== undefined && members.get(key) !== true) { key = table.get(key!); }
+                        if (key !== prevKey) transitioned = true;
+                    }
+                    table = table.get(NEXT_VERSION as any) as any;
+                }
                 if (!started) {
                     started = true;
                     key = getFirstKey();
-                } else {
-                    do {
-                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
-                    } while (key !== undefined && members.get(key) !== true);
+                } else if (!transitioned) {
+                    do { key = table.get(key!); } while (key !== undefined && members.get(key) !== true);
                 }
-                return { done: !key, value: [key!, key!] as [T, T] };
+                const val = key!;
+                return { done: !key, value: [val, val] as [T, T] };
             },
         };
     }
 
     public keys(): IterableIterator<T> {
         const getFirstKey = () => this.firstKey;
-        const getCurrentNextKey = () => this.nextKey;
-        const capturedNextKey = this.nextKey;
         const { members } = this;
+        let table = this.nextKey;
         let key: T | undefined;
         let started = false;
         return {
@@ -194,13 +197,20 @@ export class Set<T extends AnyNotNil> {
                 return this;
             },
             next(): IteratorResult<T> {
+                let transitioned = false;
+                while (table.get(NEXT_VERSION as any) !== undefined) {
+                    if (started) {
+                        const prevKey = key;
+                        while (key !== undefined && members.get(key) !== true) { key = table.get(key!); }
+                        if (key !== prevKey) transitioned = true;
+                    }
+                    table = table.get(NEXT_VERSION as any) as any;
+                }
                 if (!started) {
                     started = true;
                     key = getFirstKey();
-                } else {
-                    do {
-                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
-                    } while (key !== undefined && members.get(key) !== true);
+                } else if (!transitioned) {
+                    do { key = table.get(key!); } while (key !== undefined && members.get(key) !== true);
                 }
                 return { done: !key, value: key! };
             },
@@ -209,9 +219,8 @@ export class Set<T extends AnyNotNil> {
 
     public values(): IterableIterator<T> {
         const getFirstKey = () => this.firstKey;
-        const getCurrentNextKey = () => this.nextKey;
-        const capturedNextKey = this.nextKey;
         const { members } = this;
+        let table = this.nextKey;
         let key: T | undefined;
         let started = false;
         return {
@@ -219,13 +228,20 @@ export class Set<T extends AnyNotNil> {
                 return this;
             },
             next(): IteratorResult<T> {
+                let transitioned = false;
+                while (table.get(NEXT_VERSION as any) !== undefined) {
+                    if (started) {
+                        const prevKey = key;
+                        while (key !== undefined && members.get(key) !== true) { key = table.get(key!); }
+                        if (key !== prevKey) transitioned = true;
+                    }
+                    table = table.get(NEXT_VERSION as any) as any;
+                }
                 if (!started) {
                     started = true;
                     key = getFirstKey();
-                } else {
-                    do {
-                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
-                    } while (key !== undefined && members.get(key) !== true);
+                } else if (!transitioned) {
+                    do { key = table.get(key!); } while (key !== undefined && members.get(key) !== true);
                 }
                 return { done: !key, value: key! };
             },

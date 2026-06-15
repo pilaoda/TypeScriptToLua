@@ -1,3 +1,5 @@
+const NEXT_VERSION = {};
+
 export class Map<K extends AnyNotNil, V> {
     public static [Symbol.species] = Map;
     public [Symbol.toStringTag] = "Map";
@@ -87,7 +89,9 @@ export class Map<K extends AnyNotNil, V> {
             // Don't clear nextKey[key] or previousKey[key]:
             // active iterators need forward pointers to traverse past deleted entries
 
-            // Compaction deferred: version chain needed for safe multi-compaction
+            if (this.deletedCount > this.size) {
+                this.compact();
+            }
         }
         this.items.set(key, undefined!);
 
@@ -96,13 +100,11 @@ export class Map<K extends AnyNotNil, V> {
 
     private compact(): void {
         const oldNextKey = this.nextKey;
-        const oldPreviousKey = this.previousKey;
         const newNextKey = new LuaTable<K, K>();
         const newPreviousKey = new LuaTable<K, K>();
         setmetatable(newNextKey, { __mode: "k" });
         setmetatable(newPreviousKey, { __mode: "k" });
 
-        // Copy live chain to new tables
         let k = this.firstKey;
         while (k !== undefined) {
             const n = oldNextKey.get(k);
@@ -113,15 +115,8 @@ export class Map<K extends AnyNotNil, V> {
             k = n;
         }
 
-        // Clear live entries from old tables so old iterators
-        // fall through to getCurrentNextKey() at live keys
-        k = this.firstKey;
-        while (k !== undefined) {
-            const n = newNextKey.get(k);
-            oldNextKey.set(k, undefined!);
-            oldPreviousKey.set(k, undefined!);
-            k = n;
-        }
+        // Version chain: link old table → new table
+        oldNextKey.set(NEXT_VERSION as any, newNextKey as any);
 
         this.nextKey = newNextKey;
         this.previousKey = newPreviousKey;
@@ -178,9 +173,8 @@ export class Map<K extends AnyNotNil, V> {
 
     public entries(): IterableIterator<[K, V]> {
         const getFirstKey = () => this.firstKey;
-        const getCurrentNextKey = () => this.nextKey;
-        const capturedNextKey = this.nextKey;
         const { items, keySet } = this;
+        let table = this.nextKey;
         let key: K | undefined;
         let started = false;
         return {
@@ -188,13 +182,20 @@ export class Map<K extends AnyNotNil, V> {
                 return this;
             },
             next(): IteratorResult<[K, V]> {
+                let transitioned = false;
+                while (table.get(NEXT_VERSION as any) !== undefined) {
+                    if (started) {
+                        const prevKey = key;
+                        while (key !== undefined && keySet.get(key) !== true) { key = table.get(key!); }
+                        if (key !== prevKey) transitioned = true;
+                    }
+                    table = table.get(NEXT_VERSION as any) as any;
+                }
                 if (!started) {
                     started = true;
                     key = getFirstKey();
-                } else {
-                    do {
-                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
-                    } while (key !== undefined && keySet.get(key) !== true);
+                } else if (!transitioned) {
+                    do { key = table.get(key!); } while (key !== undefined && keySet.get(key) !== true);
                 }
                 return { done: !key, value: [key!, items.get(key!)] as [K, V] };
             },
@@ -203,9 +204,8 @@ export class Map<K extends AnyNotNil, V> {
 
     public keys(): IterableIterator<K> {
         const getFirstKey = () => this.firstKey;
-        const getCurrentNextKey = () => this.nextKey;
-        const capturedNextKey = this.nextKey;
         const { keySet } = this;
+        let table = this.nextKey;
         let key: K | undefined;
         let started = false;
         return {
@@ -213,13 +213,20 @@ export class Map<K extends AnyNotNil, V> {
                 return this;
             },
             next(): IteratorResult<K> {
+                let transitioned = false;
+                while (table.get(NEXT_VERSION as any) !== undefined) {
+                    if (started) {
+                        const prevKey = key;
+                        while (key !== undefined && keySet.get(key) !== true) { key = table.get(key!); }
+                        if (key !== prevKey) transitioned = true;
+                    }
+                    table = table.get(NEXT_VERSION as any) as any;
+                }
                 if (!started) {
                     started = true;
                     key = getFirstKey();
-                } else {
-                    do {
-                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
-                    } while (key !== undefined && keySet.get(key) !== true);
+                } else if (!transitioned) {
+                    do { key = table.get(key!); } while (key !== undefined && keySet.get(key) !== true);
                 }
                 return { done: !key, value: key! };
             },
@@ -228,9 +235,8 @@ export class Map<K extends AnyNotNil, V> {
 
     public values(): IterableIterator<V> {
         const getFirstKey = () => this.firstKey;
-        const getCurrentNextKey = () => this.nextKey;
-        const capturedNextKey = this.nextKey;
         const { items, keySet } = this;
+        let table = this.nextKey;
         let key: K | undefined;
         let started = false;
         return {
@@ -238,13 +244,20 @@ export class Map<K extends AnyNotNil, V> {
                 return this;
             },
             next(): IteratorResult<V> {
+                let transitioned = false;
+                while (table.get(NEXT_VERSION as any) !== undefined) {
+                    if (started) {
+                        const prevKey = key;
+                        while (key !== undefined && keySet.get(key) !== true) { key = table.get(key!); }
+                        if (key !== prevKey) transitioned = true;
+                    }
+                    table = table.get(NEXT_VERSION as any) as any;
+                }
                 if (!started) {
                     started = true;
                     key = getFirstKey();
-                } else {
-                    do {
-                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
-                    } while (key !== undefined && keySet.get(key) !== true);
+                } else if (!transitioned) {
+                    do { key = table.get(key!); } while (key !== undefined && keySet.get(key) !== true);
                 }
                 return { done: !key, value: items.get(key!) };
             },
