@@ -5,15 +5,16 @@ export class Map<K extends AnyNotNil, V> {
     private items = new LuaTable<K, V>();
     public size = 0;
 
-    // Key-order variables
+    // Key-order doubly-linked list (weak-key tables)
     private firstKey: K | undefined;
     private lastKey: K | undefined;
     private nextKey = new LuaTable<K, K>();
     private previousKey = new LuaTable<K, K>();
-    private deletedNextKey = new LuaTable<K, K>();
+    private deletedCount = 0;
 
     constructor(entries?: Iterable<readonly [K, V]> | Array<readonly [K, V]>) {
-        setmetatable(this.deletedNextKey, { __mode: "k" });
+        setmetatable(this.nextKey, { __mode: "k" });
+        setmetatable(this.previousKey, { __mode: "k" });
         if (entries === undefined) return;
 
         const iterable = entries as Iterable<[K, V]>;
@@ -41,47 +42,74 @@ export class Map<K extends AnyNotNil, V> {
         this.items = new LuaTable();
         this.nextKey = new LuaTable();
         this.previousKey = new LuaTable();
-        this.deletedNextKey = new LuaTable();
-        setmetatable(this.deletedNextKey, { __mode: "k" });
+        setmetatable(this.nextKey, { __mode: "k" });
+        setmetatable(this.previousKey, { __mode: "k" });
         this.firstKey = undefined;
         this.lastKey = undefined;
         this.size = 0;
+        this.deletedCount = 0;
     }
 
     public delete(key: K): boolean {
         const contains = this.has(key);
         if (contains) {
             this.size--;
+            this.deletedCount++;
 
-            // Do order bookkeeping
             const next = this.nextKey.get(key);
             const previous = this.previousKey.get(key);
 
-            // Save forward pointer for active iterators before clearing
-            if (next !== undefined) {
-                this.deletedNextKey.set(key, next);
+            // Update firstKey/lastKey, skipping deleted entries
+            if (key === this.firstKey) {
+                let fk = next;
+                while (fk !== undefined && this.items.get(fk) === undefined) {
+                    fk = this.nextKey.get(fk);
+                }
+                this.firstKey = fk;
+            }
+            if (key === this.lastKey) {
+                let lk = previous;
+                while (lk !== undefined && this.items.get(lk) === undefined) {
+                    lk = this.previousKey.get(lk);
+                }
+                this.lastKey = lk;
             }
 
-            if (next !== undefined && previous !== undefined) {
+            // Only relink when both neighbors exist (middle key deletion)
+            if (previous !== undefined && next !== undefined) {
                 this.nextKey.set(previous, next);
                 this.previousKey.set(next, previous);
-            } else if (next !== undefined) {
-                this.firstKey = next;
-                this.previousKey.set(next, undefined!);
-            } else if (previous !== undefined) {
-                this.lastKey = previous;
-                this.nextKey.set(previous, undefined!);
-            } else {
-                this.firstKey = undefined;
-                this.lastKey = undefined;
             }
 
-            this.nextKey.set(key, undefined!);
-            this.previousKey.set(key, undefined!);
+            // Don't clear nextKey[key] or previousKey[key]:
+            // active iterators need forward pointers to traverse past deleted entries
+
+            // TODO: compact when tombstones exceed live entries
         }
         this.items.set(key, undefined!);
 
         return contains;
+    }
+
+    private compact(): void {
+        const newNextKey = new LuaTable<K, K>();
+        const newPreviousKey = new LuaTable<K, K>();
+        setmetatable(newNextKey, { __mode: "k" });
+        setmetatable(newPreviousKey, { __mode: "k" });
+
+        let k = this.firstKey;
+        while (k !== undefined) {
+            const n = this.nextKey.get(k);
+            if (n !== undefined) {
+                newNextKey.set(k, n);
+                newPreviousKey.set(n, k);
+            }
+            k = n;
+        }
+
+        this.nextKey = newNextKey;
+        this.previousKey = newPreviousKey;
+        this.deletedCount = 0;
     }
 
     public forEach(callback: (value: V, key: K, map: Map<K, V>) => any): void {
@@ -95,14 +123,22 @@ export class Map<K extends AnyNotNil, V> {
     }
 
     public has(key: K): boolean {
-        return this.nextKey.get(key) !== undefined || this.lastKey === key;
+        return this.items.get(key) !== undefined || this.lastKey === key;
     }
 
     public set(key: K, value: V): this {
         const isNewValue = !this.has(key);
         if (isNewValue) {
             this.size++;
-            this.deletedNextKey.delete(key);
+
+            // Fix stale forward pointer from predecessor (if re-adding a deleted key)
+            const stalePrev = this.previousKey.get(key);
+            const staleNext = this.nextKey.get(key);
+            if (stalePrev !== undefined && staleNext !== undefined) {
+                this.nextKey.set(stalePrev, staleNext);
+            }
+            this.nextKey.set(key, undefined!);
+            this.previousKey.set(key, undefined!);
         }
         this.items.set(key, value);
 
@@ -125,7 +161,10 @@ export class Map<K extends AnyNotNil, V> {
 
     public entries(): IterableIterator<[K, V]> {
         const getFirstKey = () => this.firstKey;
-        const { items, nextKey, deletedNextKey } = this;
+        const getLastKey = () => this.lastKey;
+        const getCurrentNextKey = () => this.nextKey;
+        const capturedNextKey = this.nextKey;
+        const { items } = this;
         let key: K | undefined;
         let started = false;
         return {
@@ -137,7 +176,9 @@ export class Map<K extends AnyNotNil, V> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
+                    do {
+                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
+                    } while (key !== undefined && items.get(key) === undefined && getLastKey() !== key);
                 }
                 return { done: !key, value: [key!, items.get(key!)] as [K, V] };
             },
@@ -146,7 +187,10 @@ export class Map<K extends AnyNotNil, V> {
 
     public keys(): IterableIterator<K> {
         const getFirstKey = () => this.firstKey;
-        const { nextKey, deletedNextKey } = this;
+        const getLastKey = () => this.lastKey;
+        const getCurrentNextKey = () => this.nextKey;
+        const capturedNextKey = this.nextKey;
+        const { items } = this;
         let key: K | undefined;
         let started = false;
         return {
@@ -158,7 +202,9 @@ export class Map<K extends AnyNotNil, V> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
+                    do {
+                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
+                    } while (key !== undefined && items.get(key) === undefined && getLastKey() !== key);
                 }
                 return { done: !key, value: key! };
             },
@@ -167,7 +213,10 @@ export class Map<K extends AnyNotNil, V> {
 
     public values(): IterableIterator<V> {
         const getFirstKey = () => this.firstKey;
-        const { items, nextKey, deletedNextKey } = this;
+        const getLastKey = () => this.lastKey;
+        const getCurrentNextKey = () => this.nextKey;
+        const capturedNextKey = this.nextKey;
+        const { items } = this;
         let key: K | undefined;
         let started = false;
         return {
@@ -179,7 +228,9 @@ export class Map<K extends AnyNotNil, V> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
+                    do {
+                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
+                    } while (key !== undefined && items.get(key) === undefined && getLastKey() !== key);
                 }
                 return { done: !key, value: items.get(key!) };
             },

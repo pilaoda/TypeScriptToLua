@@ -8,10 +8,12 @@ export class Set<T extends AnyNotNil> {
     private lastKey: T | undefined;
     private nextKey = new LuaTable<T, T>();
     private previousKey = new LuaTable<T, T>();
-    private deletedNextKey = new LuaTable<T, T>();
+    private members = new LuaTable<T, true>();
+    private deletedCount = 0;
 
     constructor(values?: Iterable<T> | T[]) {
-        setmetatable(this.deletedNextKey, { __mode: "k" });
+        setmetatable(this.nextKey, { __mode: "k" });
+        setmetatable(this.previousKey, { __mode: "k" });
         if (values === undefined) return;
 
         const iterable = values as Iterable<T>;
@@ -37,7 +39,16 @@ export class Set<T extends AnyNotNil> {
         const isNewValue = !this.has(value);
         if (isNewValue) {
             this.size++;
-            this.deletedNextKey.delete(value);
+            this.members.set(value, true);
+
+            // Fix stale forward pointer from predecessor (if re-adding a deleted value)
+            const stalePrev = this.previousKey.get(value);
+            const staleNext = this.nextKey.get(value);
+            if (stalePrev !== undefined && staleNext !== undefined) {
+                this.nextKey.set(stalePrev, staleNext);
+            }
+            this.nextKey.set(value, undefined!);
+            this.previousKey.set(value, undefined!);
         }
 
         // Do order bookkeeping
@@ -56,46 +67,70 @@ export class Set<T extends AnyNotNil> {
     public clear(): void {
         this.nextKey = new LuaTable();
         this.previousKey = new LuaTable();
-        this.deletedNextKey = new LuaTable();
-        setmetatable(this.deletedNextKey, { __mode: "k" });
+        this.members = new LuaTable();
+        setmetatable(this.nextKey, { __mode: "k" });
+        setmetatable(this.previousKey, { __mode: "k" });
         this.firstKey = undefined;
         this.lastKey = undefined;
         this.size = 0;
+        this.deletedCount = 0;
     }
 
     public delete(value: T): boolean {
         const contains = this.has(value);
         if (contains) {
             this.size--;
+            this.deletedCount++;
+            this.members.delete(value);
 
-            // Do order bookkeeping
             const next = this.nextKey.get(value);
             const previous = this.previousKey.get(value);
 
-            // Save forward pointer for active iterators before clearing
-            if (next !== undefined) {
-                this.deletedNextKey.set(value, next);
+            if (value === this.firstKey) {
+                let fk = next;
+                while (fk !== undefined && this.members.get(fk) !== true) {
+                    fk = this.nextKey.get(fk);
+                }
+                this.firstKey = fk;
+            }
+            if (value === this.lastKey) {
+                let lk = previous;
+                while (lk !== undefined && this.members.get(lk) !== true) {
+                    lk = this.previousKey.get(lk);
+                }
+                this.lastKey = lk;
             }
 
-            if (next !== undefined && previous !== undefined) {
+            if (previous !== undefined && next !== undefined) {
                 this.nextKey.set(previous, next);
                 this.previousKey.set(next, previous);
-            } else if (next !== undefined) {
-                this.firstKey = next;
-                this.previousKey.set(next, undefined!);
-            } else if (previous !== undefined) {
-                this.lastKey = previous;
-                this.nextKey.set(previous, undefined!);
-            } else {
-                this.firstKey = undefined;
-                this.lastKey = undefined;
             }
 
-            this.nextKey.set(value, undefined!);
-            this.previousKey.set(value, undefined!);
+            // TODO: compact when tombstones exceed live entries
         }
 
         return contains;
+    }
+
+    private compact(): void {
+        const newNextKey = new LuaTable<T, T>();
+        const newPreviousKey = new LuaTable<T, T>();
+        setmetatable(newNextKey, { __mode: "k" });
+        setmetatable(newPreviousKey, { __mode: "k" });
+
+        let k = this.firstKey;
+        while (k !== undefined) {
+            const n = this.nextKey.get(k);
+            if (n !== undefined) {
+                newNextKey.set(k, n);
+                newPreviousKey.set(n, k);
+            }
+            k = n;
+        }
+
+        this.nextKey = newNextKey;
+        this.previousKey = newPreviousKey;
+        this.deletedCount = 0;
     }
 
     public forEach(callback: (value: T, key: T, set: Set<T>) => any): void {
@@ -105,7 +140,7 @@ export class Set<T extends AnyNotNil> {
     }
 
     public has(value: T): boolean {
-        return this.nextKey.get(value) !== undefined || this.lastKey === value;
+        return this.members.get(value) === true;
     }
 
     public [Symbol.iterator](): IterableIterator<T> {
@@ -114,7 +149,9 @@ export class Set<T extends AnyNotNil> {
 
     public entries(): IterableIterator<[T, T]> {
         const getFirstKey = () => this.firstKey;
-        const { nextKey, deletedNextKey } = this;
+        const getCurrentNextKey = () => this.nextKey;
+        const capturedNextKey = this.nextKey;
+        const { members } = this;
         let key: T | undefined;
         let started = false;
         return {
@@ -126,7 +163,9 @@ export class Set<T extends AnyNotNil> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
+                    do {
+                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
+                    } while (key !== undefined && members.get(key) !== true);
                 }
                 return { done: !key, value: [key!, key!] as [T, T] };
             },
@@ -135,7 +174,9 @@ export class Set<T extends AnyNotNil> {
 
     public keys(): IterableIterator<T> {
         const getFirstKey = () => this.firstKey;
-        const { nextKey, deletedNextKey } = this;
+        const getCurrentNextKey = () => this.nextKey;
+        const capturedNextKey = this.nextKey;
+        const { members } = this;
         let key: T | undefined;
         let started = false;
         return {
@@ -147,7 +188,9 @@ export class Set<T extends AnyNotNil> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
+                    do {
+                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
+                    } while (key !== undefined && members.get(key) !== true);
                 }
                 return { done: !key, value: key! };
             },
@@ -156,7 +199,9 @@ export class Set<T extends AnyNotNil> {
 
     public values(): IterableIterator<T> {
         const getFirstKey = () => this.firstKey;
-        const { nextKey, deletedNextKey } = this;
+        const getCurrentNextKey = () => this.nextKey;
+        const capturedNextKey = this.nextKey;
+        const { members } = this;
         let key: T | undefined;
         let started = false;
         return {
@@ -168,7 +213,9 @@ export class Set<T extends AnyNotNil> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
+                    do {
+                        key = getCurrentNextKey().get(key!) ?? capturedNextKey.get(key!);
+                    } while (key !== undefined && members.get(key) !== true);
                 }
                 return { done: !key, value: key! };
             },
