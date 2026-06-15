@@ -9,10 +9,8 @@
 // contiguous memory, making iteration a simple pointer offset (~2-3 cycles)
 // rather than a hash table lookup (~15-50 cycles per step).
 //
-// Based on V8's OrderedHashTable:
-//   Rehash:     https://chromium.googlesource.com/v8/v8/+/main/src/objects/ordered-hash-table.cc#263
-//   Transition: https://chromium.googlesource.com/v8/v8/+/main/src/objects/ordered-hash-table.cc#1443
-//   Tests:      https://chromium.googlesource.com/v8/v8/+/main/test/mjsunit/es6/collection-iterator.js
+// Based on V8's OrderedHashTable (ordered-hash-table.cc: Rehash, Transition):
+//   https://chromium.googlesource.com/v8/v8/+/main/src/objects/ordered-hash-table.cc
 export class Map<K extends AnyNotNil, V> {
     public static [Symbol.species] = Map;
     public [Symbol.toStringTag] = "Map";
