@@ -1,3 +1,13 @@
+// Insertion-ordered Map using flat arrays with tombstone deletion and
+// V8-style version chain compaction. Deleted entries become nil (tombstones);
+// iterators skip them via idx++. Compaction creates new arrays and links
+// old → new at index 0; iterators transition lazily by adjusting their
+// index (subtracting holes before current position).
+//
+// Based on V8's OrderedHashTable:
+//   Rehash:     https://chromium.googlesource.com/v8/v8/+/main/src/objects/ordered-hash-table.cc#263
+//   Transition: https://chromium.googlesource.com/v8/v8/+/main/src/objects/ordered-hash-table.cc#1443
+//   Tests:      https://chromium.googlesource.com/v8/v8/+/main/test/mjsunit/es6/collection-iterator.js
 export class Map<K extends AnyNotNil, V> {
     public static [Symbol.species] = Map;
     public [Symbol.toStringTag] = "Map";
@@ -59,6 +69,9 @@ export class Map<K extends AnyNotNil, V> {
         return true;
     }
 
+    // V8-style compaction: copy live entries to new arrays, record hole
+    // positions in the old array at negative indices, link old[0] → new.
+    // Active iterators hold old arrays and transition lazily on next().
     private compact(): void {
         const oldKeys = this.orderedKeys;
         const oldValues = this.orderedValues;

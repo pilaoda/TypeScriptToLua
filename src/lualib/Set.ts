@@ -1,3 +1,4 @@
+// See Map.ts for design overview and V8 source references.
 export class Set<T extends AnyNotNil> {
     public static [Symbol.species] = Set;
     public [Symbol.toStringTag] = "Set";
@@ -65,6 +66,7 @@ export class Set<T extends AnyNotNil> {
         return true;
     }
 
+    // See Map.compact() for design explanation.
     private compact(): void {
         const oldKeys = this.orderedKeys;
         const oldNextSlot = this.nextSlot;
