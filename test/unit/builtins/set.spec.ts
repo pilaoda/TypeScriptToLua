@@ -284,6 +284,30 @@ describe.each(iterationMethods)("set.%s() handles mutation", iterationMethod => 
         `.expectToMatchJsResult();
     });
 
+    test("forEach delete current and next entry", () => {
+        util.testFunction`
+            const set = new Set([1, 2, 3]);
+            const visited: number[] = [];
+            set.forEach(value => {
+                visited.push(value);
+                if (value === 1) { set.delete(1); set.delete(2); }
+            });
+            return { visited, size: set.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("forEach delete current then re-add", () => {
+        util.testFunction`
+            const set = new Set([1, 2, 3]);
+            const visited: number[] = [];
+            set.forEach(value => {
+                visited.push(value);
+                if (value === 1) { set.delete(1); set.delete(2); set.add(2); }
+            });
+            return { visited, size: set.size };
+        `.expectToMatchJsResult();
+    });
+
     test("for-of delete current and next entry", () => {
         util.testFunction`
             const set = new Set([1, 2, 3]);
@@ -403,25 +427,24 @@ describe("set iterator stress (v8-style)", () => {
     });
 });
 
+// See map.spec.ts "map memory" describe block for detailed explanation of
+// the Lua table rehash trick with negative keys.
+// https://github.com/lua/lua/blob/master/ltable.c (luaH_newkey, rehash, computesizes)
 describe("set memory", () => {
-    test("deleting primitive values should not leak memory", () => {
+    test("deleting values should not leak memory", () => {
         const result = util.testFunction`
             /** @noSelf */ declare function collectgarbage(opt?: string): number;
-            collectgarbage(); collectgarbage();
+            collectgarbage("collect");
             const baseline = collectgarbage("count");
 
-            const set = new Set<string>();
-            for (let round = 0; round < 10; round++) {
-                const keys: string[] = [];
-                for (let i = 0; i < 1000; i++) {
-                    const k = "k" + (round * 1000 + i);
-                    keys.push(k);
-                    set.add(k);
-                }
-                for (const k of keys) { set.delete(k); }
-            }
+            const set = new Set<number>();
+            for (let i = 1; i <= 10000; i++) set.add(i);
+            for (let i = 1; i <= 10000; i++) set.delete(i);
+            // Trigger Lua table rehash to shrink internal tables
+            set.add(-1);
+            set.delete(-1);
 
-            collectgarbage(); collectgarbage();
+            collectgarbage("collect");
             const after = collectgarbage("count");
 
             return {
@@ -429,9 +452,8 @@ describe("set memory", () => {
                 retained: Math.floor(after - baseline),
             };
         `.getLuaExecutionResult();
-        // console.log("memory:", result);
         expect(result.size).toBe(0);
-        expect(result.retained).toBeLessThan(100);
+        expect(result.retained).toBe(0);
     });
 });
 

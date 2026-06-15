@@ -295,6 +295,30 @@ describe.each(iterationMethods)("map.%s() handles mutation", iterationMethod => 
         `.expectToMatchJsResult();
     });
 
+    test("forEach delete current and next entry", () => {
+        util.testFunction`
+            const map = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
+            const visited: string[] = [];
+            map.forEach((_, key) => {
+                visited.push(key);
+                if (key === "a") { map.delete("a"); map.delete("b"); }
+            });
+            return { visited, size: map.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("forEach delete current then re-add", () => {
+        util.testFunction`
+            const map = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
+            const visited: string[] = [];
+            map.forEach((_, key) => {
+                visited.push(key);
+                if (key === "a") { map.delete("a"); map.delete("b"); map.set("b", 9); }
+            });
+            return { visited, size: map.size };
+        `.expectToMatchJsResult();
+    });
+
     test("for-of delete current then add new entry", () => {
         util.testFunction`
             const map = new Map<string, number>([["a", 1], ["b", 2]]);
@@ -427,25 +451,31 @@ describe("map iterator stress (v8-style)", () => {
     });
 });
 
+// Lua tables don't shrink when entries are set to nil — they only resize on
+// the next insert that exhausts all free hash nodes (luaH_newkey → getfreepos
+// → rehash). Keys 1..10000 go to the array part (positive integers, >50%
+// density). After deleting all, the array part stays allocated. Inserting -1
+// (negative → hash part, which is empty/dummy after only positive keys)
+// triggers rehash via the isdummy(t) check in luaH_newkey, causing
+// computesizes to recalculate: 0 live integer keys → array shrinks to 0.
+// Compaction during deletion already replaces orderedKeys/orderedValues
+// with fresh arrays; the insert triggers rehash on the remaining keyIndex.
+// See: https://github.com/lua/lua/blob/master/ltable.c (luaH_newkey, rehash, computesizes)
 describe("map memory", () => {
-    test("deleting primitive keys should not leak memory", () => {
+    test("deleting keys should not leak memory", () => {
         const result = util.testFunction`
             /** @noSelf */ declare function collectgarbage(opt?: string): number;
-            collectgarbage(); collectgarbage();
+            collectgarbage("collect");
             const baseline = collectgarbage("count");
 
-            const map = new Map<string, number>();
-            for (let round = 0; round < 10; round++) {
-                const keys: string[] = [];
-                for (let i = 0; i < 1000; i++) {
-                    const k = "k" + (round * 1000 + i);
-                    keys.push(k);
-                    map.set(k, i);
-                }
-                for (const k of keys) { map.delete(k); }
-            }
+            const map = new Map<number, number>();
+            for (let i = 1; i <= 10000; i++) map.set(i, i);
+            for (let i = 1; i <= 10000; i++) map.delete(i);
+            // Trigger Lua table rehash to shrink internal tables (see comment above)
+            map.set(-1, -1);
+            map.delete(-1);
 
-            collectgarbage(); collectgarbage();
+            collectgarbage("collect");
             const after = collectgarbage("count");
 
             return {
@@ -453,9 +483,8 @@ describe("map memory", () => {
                 retained: Math.floor(after - baseline),
             };
         `.getLuaExecutionResult();
-        // console.log("memory:", result);
         expect(result.size).toBe(0);
-        expect(result.retained).toBeLessThan(100);
+        expect(result.retained).toBe(0);
     });
 });
 
