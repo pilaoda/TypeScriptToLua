@@ -72,9 +72,21 @@ export class Map<K extends AnyNotNil, V> {
         return true;
     }
 
-    // V8-style compaction: copy live entries to new arrays, record hole
-    // positions in the old array at negative indices, link old[0] → new.
-    // Active iterators hold old arrays and transition lazily on next().
+    // Compaction is needed because nextSlot grows monotonically — deleted
+    // entries leave nil tombstones but Lua tables don't shrink on nil
+    // assignment. Lua only resizes a table during rehash, and rehash only
+    // triggers when a hash-part insert exhausts free nodes (ltable.c:
+    // luaH_newkey → getfreepos → rehash). Since orderedKeys uses sequential
+    // integer indices (array part), normal inserts rarely touch the hash
+    // part, so rehash won't trigger naturally to reclaim the space.
+    //
+    // V8-style: copy live entries to new arrays, record hole positions in
+    // the old array at negative indices, link old[0] → new. Active iterators
+    // hold old arrays and transition lazily on next() by adjusting their
+    // index (subtracting holes before current position).
+    //
+    // Index 0 and negative indices go to Lua's hash part (not array part),
+    // so they don't conflict with the 1-based data entries.
     private compact(): void {
         const oldKeys = this.orderedKeys;
         const oldValues = this.orderedValues;
@@ -93,12 +105,12 @@ export class Map<K extends AnyNotNil, V> {
                 newSlot++;
             } else {
                 holeCount++;
-                oldKeys.set(-holeCount as any, i as any);
+                oldKeys.set(-holeCount, i as any);
             }
         }
 
-        oldKeys.set(0 as any, newKeys as any);
-        oldValues.set(0 as any, newValues as any);
+        oldKeys.set(0, newKeys as any);
+        oldValues.set(0, newValues as any);
 
         this.orderedKeys = newKeys;
         this.orderedValues = newValues;
@@ -108,7 +120,7 @@ export class Map<K extends AnyNotNil, V> {
 
     public forEach(callback: (value: V, key: K, map: Map<K, V>) => any): void {
         for (const key of this.keys()) {
-            callback(this.orderedValues.get(this.keyIndex.get(key)!), key, this);
+            callback(this.orderedValues.get(this.keyIndex.get(key)), key, this);
         }
     }
 
@@ -141,28 +153,30 @@ export class Map<K extends AnyNotNil, V> {
         return this.entries();
     }
 
+    // entries/keys/values are intentionally kept inline (not refactored into
+    // a shared helper) to avoid per-step function call overhead on this hot path.
     public entries(): IterableIterator<[K, V]> {
         let keys = this.orderedKeys;
         let vals = this.orderedValues;
-        const map = this;
+        const map = this; // eslint-disable-line @typescript-eslint/no-this-alias
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<[K, V]> {
                 return this;
             },
             next(): IteratorResult<[K, V]> {
-                while (keys.get(0 as any) !== undefined) {
+                while (keys.get(0) !== undefined) {
                     let adj = 0;
                     let h = 1;
                     while (true) {
-                        const holePos: number = keys.get(-h as any) as any;
+                        const holePos = keys.get(-h) as any as number | undefined;
                         if (holePos === undefined || holePos >= idx) break;
                         adj++;
                         h++;
                     }
                     idx -= adj;
-                    keys = keys.get(0 as any) as any;
-                    vals = vals.get(0 as any) as any;
+                    vals = vals.get(0) as any;
+                    keys = keys.get(0) as any;
                 }
                 while (idx < map.nextSlot && keys.get(idx) === undefined) {
                     idx++;
@@ -172,31 +186,31 @@ export class Map<K extends AnyNotNil, V> {
                 }
                 const i = idx;
                 idx++;
-                return { done: false, value: [keys.get(i)!, vals.get(i)] as [K, V] };
+                return { done: false, value: [keys.get(i), vals.get(i)] as [K, V] };
             },
         };
     }
 
     public keys(): IterableIterator<K> {
         let keys = this.orderedKeys;
-        const map = this;
+        const map = this; // eslint-disable-line @typescript-eslint/no-this-alias
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<K> {
                 return this;
             },
             next(): IteratorResult<K> {
-                while (keys.get(0 as any) !== undefined) {
+                while (keys.get(0) !== undefined) {
                     let adj = 0;
                     let h = 1;
                     while (true) {
-                        const holePos: number = keys.get(-h as any) as any;
+                        const holePos = keys.get(-h) as any as number | undefined;
                         if (holePos === undefined || holePos >= idx) break;
                         adj++;
                         h++;
                     }
                     idx -= adj;
-                    keys = keys.get(0 as any) as any;
+                    keys = keys.get(0) as any;
                 }
                 while (idx < map.nextSlot && keys.get(idx) === undefined) {
                     idx++;
@@ -206,7 +220,7 @@ export class Map<K extends AnyNotNil, V> {
                 }
                 const i = idx;
                 idx++;
-                return { done: false, value: keys.get(i)! };
+                return { done: false, value: keys.get(i) };
             },
         };
     }
@@ -214,25 +228,25 @@ export class Map<K extends AnyNotNil, V> {
     public values(): IterableIterator<V> {
         let keys = this.orderedKeys;
         let vals = this.orderedValues;
-        const map = this;
+        const map = this; // eslint-disable-line @typescript-eslint/no-this-alias
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<V> {
                 return this;
             },
             next(): IteratorResult<V> {
-                while (keys.get(0 as any) !== undefined) {
+                while (keys.get(0) !== undefined) {
                     let adj = 0;
                     let h = 1;
                     while (true) {
-                        const holePos: number = keys.get(-h as any) as any;
+                        const holePos = keys.get(-h) as any as number | undefined;
                         if (holePos === undefined || holePos >= idx) break;
                         adj++;
                         h++;
                     }
                     idx -= adj;
-                    keys = keys.get(0 as any) as any;
-                    vals = vals.get(0 as any) as any;
+                    vals = vals.get(0) as any;
+                    keys = keys.get(0) as any;
                 }
                 while (idx < map.nextSlot && keys.get(idx) === undefined) {
                     idx++;

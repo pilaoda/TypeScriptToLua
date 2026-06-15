@@ -410,7 +410,7 @@ describe("set memory", () => {
     test("deleting values should not leak memory", () => {
         const result = util.testFunction`
             /** @noSelf */ declare function collectgarbage(opt?: string): number;
-            collectgarbage(); collectgarbage();
+            collectgarbage("collect");
             const baseline = collectgarbage("count");
 
             const set = new Set<number>();
@@ -422,7 +422,7 @@ describe("set memory", () => {
             set.delete(-1);
             set.delete(-2);
 
-            collectgarbage(); collectgarbage();
+            collectgarbage("collect");
             const after = collectgarbage("count");
 
             return {
@@ -431,7 +431,7 @@ describe("set memory", () => {
             };
         `.getLuaExecutionResult();
         expect(result.size).toBe(0);
-        expect(result.retained).toBeLessThan(100);
+        expect(result.retained).toBe(0);
     });
 });
 

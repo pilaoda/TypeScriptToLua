@@ -82,11 +82,11 @@ export class Set<T extends AnyNotNil> {
                 newSlot++;
             } else {
                 holeCount++;
-                oldKeys.set(-holeCount as any, i as any);
+                oldKeys.set(-holeCount, i as any);
             }
         }
 
-        oldKeys.set(0 as any, newKeys as any);
+        oldKeys.set(0, newKeys as any);
 
         this.orderedKeys = newKeys;
         this.nextSlot = newSlot;
@@ -109,24 +109,24 @@ export class Set<T extends AnyNotNil> {
 
     public entries(): IterableIterator<[T, T]> {
         let keys = this.orderedKeys;
-        const set = this;
+        const set = this; // eslint-disable-line @typescript-eslint/no-this-alias
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<[T, T]> {
                 return this;
             },
             next(): IteratorResult<[T, T]> {
-                while (keys.get(0 as any) !== undefined) {
+                while (keys.get(0) !== undefined) {
                     let adj = 0;
                     let h = 1;
                     while (true) {
-                        const holePos: number = keys.get(-h as any) as any;
+                        const holePos = keys.get(-h) as any as number | undefined;
                         if (holePos === undefined || holePos >= idx) break;
                         adj++;
                         h++;
                     }
                     idx -= adj;
-                    keys = keys.get(0 as any) as any;
+                    keys = keys.get(0) as any;
                 }
                 while (idx < set.nextSlot && keys.get(idx) === undefined) {
                     idx++;
@@ -134,7 +134,7 @@ export class Set<T extends AnyNotNil> {
                 if (idx >= set.nextSlot) {
                     return { done: true, value: undefined! };
                 }
-                const val = keys.get(idx)!;
+                const val = keys.get(idx);
                 idx++;
                 return { done: false, value: [val, val] as [T, T] };
             },
@@ -143,24 +143,24 @@ export class Set<T extends AnyNotNil> {
 
     public keys(): IterableIterator<T> {
         let keys = this.orderedKeys;
-        const set = this;
+        const set = this; // eslint-disable-line @typescript-eslint/no-this-alias
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<T> {
                 return this;
             },
             next(): IteratorResult<T> {
-                while (keys.get(0 as any) !== undefined) {
+                while (keys.get(0) !== undefined) {
                     let adj = 0;
                     let h = 1;
                     while (true) {
-                        const holePos: number = keys.get(-h as any) as any;
+                        const holePos = keys.get(-h) as any as number | undefined;
                         if (holePos === undefined || holePos >= idx) break;
                         adj++;
                         h++;
                     }
                     idx -= adj;
-                    keys = keys.get(0 as any) as any;
+                    keys = keys.get(0) as any;
                 }
                 while (idx < set.nextSlot && keys.get(idx) === undefined) {
                     idx++;
@@ -168,7 +168,7 @@ export class Set<T extends AnyNotNil> {
                 if (idx >= set.nextSlot) {
                     return { done: true, value: undefined! };
                 }
-                const val = keys.get(idx)!;
+                const val = keys.get(idx);
                 idx++;
                 return { done: false, value: val };
             },
@@ -177,24 +177,24 @@ export class Set<T extends AnyNotNil> {
 
     public values(): IterableIterator<T> {
         let keys = this.orderedKeys;
-        const set = this;
+        const set = this; // eslint-disable-line @typescript-eslint/no-this-alias
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<T> {
                 return this;
             },
             next(): IteratorResult<T> {
-                while (keys.get(0 as any) !== undefined) {
+                while (keys.get(0) !== undefined) {
                     let adj = 0;
                     let h = 1;
                     while (true) {
-                        const holePos: number = keys.get(-h as any) as any;
+                        const holePos = keys.get(-h) as any as number | undefined;
                         if (holePos === undefined || holePos >= idx) break;
                         adj++;
                         h++;
                     }
                     idx -= adj;
-                    keys = keys.get(0 as any) as any;
+                    keys = keys.get(0) as any;
                 }
                 while (idx < set.nextSlot && keys.get(idx) === undefined) {
                     idx++;
@@ -202,7 +202,7 @@ export class Set<T extends AnyNotNil> {
                 if (idx >= set.nextSlot) {
                     return { done: true, value: undefined! };
                 }
-                const val = keys.get(idx)!;
+                const val = keys.get(idx);
                 idx++;
                 return { done: false, value: val };
             },

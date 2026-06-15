@@ -441,7 +441,7 @@ describe("map memory", () => {
     test("deleting keys should not leak memory", () => {
         const result = util.testFunction`
             /** @noSelf */ declare function collectgarbage(opt?: string): number;
-            collectgarbage(); collectgarbage();
+            collectgarbage("collect");
             const baseline = collectgarbage("count");
 
             const map = new Map<number, number>();
@@ -453,7 +453,7 @@ describe("map memory", () => {
             map.delete(-1);
             map.delete(-2);
 
-            collectgarbage(); collectgarbage();
+            collectgarbage("collect");
             const after = collectgarbage("count");
 
             return {
@@ -462,7 +462,7 @@ describe("map memory", () => {
             };
         `.getLuaExecutionResult();
         expect(result.size).toBe(0);
-        expect(result.retained).toBeLessThan(100);
+        expect(result.retained).toBe(0);
     });
 });
 
