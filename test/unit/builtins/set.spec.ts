@@ -235,6 +235,54 @@ describe.each(iterationMethods)("set.%s() handles mutation", iterationMethod => 
             return results;
         `.expectToMatchJsResult();
     });
+
+    test("for-of delete current entry continues to next", () => {
+        util.testFunction`
+            const set = new Set([1, 2, 3]);
+            const visited: number[] = [];
+            for (const value of set) {
+                visited.push(value);
+                set.delete(value);
+            }
+            return { visited, size: set.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("for-of delete current entry with only two entries", () => {
+        util.testFunction`
+            const set = new Set([1, 2]);
+            const visited: number[] = [];
+            for (const value of set) {
+                visited.push(value);
+                set.delete(value);
+            }
+            return { visited, size: set.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("for-of delete other entry during iteration", () => {
+        util.testFunction`
+            const set = new Set([1, 2, 3]);
+            const visited: number[] = [];
+            for (const value of set) {
+                visited.push(value);
+                if (value === 1) { set.delete(2); }
+            }
+            return { visited, size: set.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("forEach delete current entry continues to next", () => {
+        util.testFunction`
+            const set = new Set([1, 2, 3]);
+            const visited: number[] = [];
+            set.forEach(value => {
+                visited.push(value);
+                set.delete(value);
+            });
+            return { visited, size: set.size };
+        `.expectToMatchJsResult();
+    });
 });
 
 test("instanceof Set without creating set", () => {

@@ -10,8 +10,10 @@ export class Map<K extends AnyNotNil, V> {
     private lastKey: K | undefined;
     private nextKey = new LuaTable<K, K>();
     private previousKey = new LuaTable<K, K>();
+    private deletedNextKey = new LuaTable<K, K>();
 
     constructor(entries?: Iterable<readonly [K, V]> | Array<readonly [K, V]>) {
+        setmetatable(this.deletedNextKey, { __mode: "k" });
         if (entries === undefined) return;
 
         const iterable = entries as Iterable<[K, V]>;
@@ -39,6 +41,8 @@ export class Map<K extends AnyNotNil, V> {
         this.items = new LuaTable();
         this.nextKey = new LuaTable();
         this.previousKey = new LuaTable();
+        this.deletedNextKey = new LuaTable();
+        setmetatable(this.deletedNextKey, { __mode: "k" });
         this.firstKey = undefined;
         this.lastKey = undefined;
         this.size = 0;
@@ -52,6 +56,12 @@ export class Map<K extends AnyNotNil, V> {
             // Do order bookkeeping
             const next = this.nextKey.get(key);
             const previous = this.previousKey.get(key);
+
+            // Save forward pointer for active iterators before clearing
+            if (next !== undefined) {
+                this.deletedNextKey.set(key, next);
+            }
+
             if (next !== undefined && previous !== undefined) {
                 this.nextKey.set(previous, next);
                 this.previousKey.set(next, previous);
@@ -92,6 +102,7 @@ export class Map<K extends AnyNotNil, V> {
         const isNewValue = !this.has(key);
         if (isNewValue) {
             this.size++;
+            this.deletedNextKey.delete(key);
         }
         this.items.set(key, value);
 
@@ -114,7 +125,7 @@ export class Map<K extends AnyNotNil, V> {
 
     public entries(): IterableIterator<[K, V]> {
         const getFirstKey = () => this.firstKey;
-        const { items, nextKey } = this;
+        const { items, nextKey, deletedNextKey } = this;
         let key: K | undefined;
         let started = false;
         return {
@@ -126,7 +137,7 @@ export class Map<K extends AnyNotNil, V> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!);
+                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
                 }
                 return { done: !key, value: [key!, items.get(key!)] as [K, V] };
             },
@@ -135,7 +146,7 @@ export class Map<K extends AnyNotNil, V> {
 
     public keys(): IterableIterator<K> {
         const getFirstKey = () => this.firstKey;
-        const nextKey = this.nextKey;
+        const { nextKey, deletedNextKey } = this;
         let key: K | undefined;
         let started = false;
         return {
@@ -147,7 +158,7 @@ export class Map<K extends AnyNotNil, V> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!);
+                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
                 }
                 return { done: !key, value: key! };
             },
@@ -156,7 +167,7 @@ export class Map<K extends AnyNotNil, V> {
 
     public values(): IterableIterator<V> {
         const getFirstKey = () => this.firstKey;
-        const { items, nextKey } = this;
+        const { items, nextKey, deletedNextKey } = this;
         let key: K | undefined;
         let started = false;
         return {
@@ -168,7 +179,7 @@ export class Map<K extends AnyNotNil, V> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!);
+                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
                 }
                 return { done: !key, value: items.get(key!) };
             },

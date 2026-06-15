@@ -8,8 +8,10 @@ export class Set<T extends AnyNotNil> {
     private lastKey: T | undefined;
     private nextKey = new LuaTable<T, T>();
     private previousKey = new LuaTable<T, T>();
+    private deletedNextKey = new LuaTable<T, T>();
 
     constructor(values?: Iterable<T> | T[]) {
+        setmetatable(this.deletedNextKey, { __mode: "k" });
         if (values === undefined) return;
 
         const iterable = values as Iterable<T>;
@@ -35,6 +37,7 @@ export class Set<T extends AnyNotNil> {
         const isNewValue = !this.has(value);
         if (isNewValue) {
             this.size++;
+            this.deletedNextKey.delete(value);
         }
 
         // Do order bookkeeping
@@ -53,6 +56,8 @@ export class Set<T extends AnyNotNil> {
     public clear(): void {
         this.nextKey = new LuaTable();
         this.previousKey = new LuaTable();
+        this.deletedNextKey = new LuaTable();
+        setmetatable(this.deletedNextKey, { __mode: "k" });
         this.firstKey = undefined;
         this.lastKey = undefined;
         this.size = 0;
@@ -66,6 +71,12 @@ export class Set<T extends AnyNotNil> {
             // Do order bookkeeping
             const next = this.nextKey.get(value);
             const previous = this.previousKey.get(value);
+
+            // Save forward pointer for active iterators before clearing
+            if (next !== undefined) {
+                this.deletedNextKey.set(value, next);
+            }
+
             if (next !== undefined && previous !== undefined) {
                 this.nextKey.set(previous, next);
                 this.previousKey.set(next, previous);
@@ -103,7 +114,7 @@ export class Set<T extends AnyNotNil> {
 
     public entries(): IterableIterator<[T, T]> {
         const getFirstKey = () => this.firstKey;
-        const nextKey = this.nextKey;
+        const { nextKey, deletedNextKey } = this;
         let key: T | undefined;
         let started = false;
         return {
@@ -115,7 +126,7 @@ export class Set<T extends AnyNotNil> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!);
+                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
                 }
                 return { done: !key, value: [key!, key!] as [T, T] };
             },
@@ -124,7 +135,7 @@ export class Set<T extends AnyNotNil> {
 
     public keys(): IterableIterator<T> {
         const getFirstKey = () => this.firstKey;
-        const nextKey = this.nextKey;
+        const { nextKey, deletedNextKey } = this;
         let key: T | undefined;
         let started = false;
         return {
@@ -136,7 +147,7 @@ export class Set<T extends AnyNotNil> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!);
+                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
                 }
                 return { done: !key, value: key! };
             },
@@ -145,7 +156,7 @@ export class Set<T extends AnyNotNil> {
 
     public values(): IterableIterator<T> {
         const getFirstKey = () => this.firstKey;
-        const nextKey = this.nextKey;
+        const { nextKey, deletedNextKey } = this;
         let key: T | undefined;
         let started = false;
         return {
@@ -157,7 +168,7 @@ export class Set<T extends AnyNotNil> {
                     started = true;
                     key = getFirstKey();
                 } else {
-                    key = nextKey.get(key!);
+                    key = nextKey.get(key!) ?? deletedNextKey.get(key!);
                 }
                 return { done: !key, value: key! };
             },

@@ -246,6 +246,79 @@ describe.each(iterationMethods)("map.%s() handles mutation", iterationMethod => 
             return results;
         `.expectToMatchJsResult();
     });
+
+    test("for-of delete current entry continues to next", () => {
+        util.testFunction`
+            const map = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
+            const visited: string[] = [];
+            for (const [key] of map) {
+                visited.push(key);
+                map.delete(key);
+            }
+            return { visited, size: map.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("for-of delete current entry with only two entries", () => {
+        util.testFunction`
+            const map = new Map<string, number>([["a", 1], ["b", 2]]);
+            const visited: string[] = [];
+            for (const [key] of map) {
+                visited.push(key);
+                map.delete(key);
+            }
+            return { visited, size: map.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("for-of delete other entry during iteration", () => {
+        util.testFunction`
+            const map = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
+            const visited: string[] = [];
+            for (const [key] of map) {
+                visited.push(key);
+                if (key === "a") { map.delete("b"); }
+            }
+            return { visited, size: map.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("forEach delete current entry continues to next", () => {
+        util.testFunction`
+            const map = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
+            const visited: string[] = [];
+            map.forEach((_, key) => {
+                visited.push(key);
+                map.delete(key);
+            });
+            return { visited, size: map.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("for-of delete current then add new entry", () => {
+        util.testFunction`
+            const map = new Map<string, number>([["a", 1], ["b", 2]]);
+            const visited: string[] = [];
+            for (const [key] of map) {
+                visited.push(key);
+                map.delete(key);
+                if (key === "a") { map.set("c", 3); }
+            }
+            return { visited, size: map.size };
+        `.expectToMatchJsResult();
+    });
+
+    test("for-of delete then re-add same key", () => {
+        util.testFunction`
+            const map = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
+            const visited: string[] = [];
+            for (const [key] of map) {
+                visited.push(key);
+                if (key === "a") { map.delete("b"); map.set("b", 9); }
+            }
+            return { visited, size: map.size };
+        `.expectToMatchJsResult();
+    });
 });
 
 describe("Map.groupBy", () => {
