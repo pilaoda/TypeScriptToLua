@@ -8,6 +8,7 @@ export class Set<T extends AnyNotNil> {
     private keyIndex = new LuaTable<T, number>();
     private orderedKeys = new LuaTable<number, T>();
     private nextSlot = 1;
+    private deletedCount = 0;
 
     constructor(values?: Iterable<T> | T[]) {
         if (values === undefined) return;
@@ -47,15 +48,47 @@ export class Set<T extends AnyNotNil> {
         this.orderedKeys = new LuaTable();
         this.nextSlot = 1;
         this.size = 0;
+        this.deletedCount = 0;
     }
 
     public delete(value: T): boolean {
         const idx = this.keyIndex.get(value);
         if (idx === undefined) return false;
         this.size--;
+        this.deletedCount++;
         this.keyIndex.set(value, undefined!);
         this.orderedKeys.set(idx, undefined!);
+
+        if (this.deletedCount > this.size) {
+            this.compact();
+        }
         return true;
+    }
+
+    private compact(): void {
+        const oldKeys = this.orderedKeys;
+        const oldNextSlot = this.nextSlot;
+        const newKeys = new LuaTable<number, T>();
+        let newSlot = 1;
+        let holeCount = 0;
+
+        for (let i = 1; i < oldNextSlot; i++) {
+            const k = oldKeys.get(i);
+            if (k !== undefined) {
+                newKeys.set(newSlot, k);
+                this.keyIndex.set(k, newSlot);
+                newSlot++;
+            } else {
+                holeCount++;
+                oldKeys.set(-holeCount as any, i as any);
+            }
+        }
+
+        oldKeys.set(0 as any, newKeys as any);
+
+        this.orderedKeys = newKeys;
+        this.nextSlot = newSlot;
+        this.deletedCount = 0;
     }
 
     public forEach(callback: (value: T, key: T, set: Set<T>) => any): void {
@@ -73,65 +106,103 @@ export class Set<T extends AnyNotNil> {
     }
 
     public entries(): IterableIterator<[T, T]> {
-        const { orderedKeys } = this;
+        let keys = this.orderedKeys;
         const getNextSlot = () => this.nextSlot;
-        let idx = 0;
+        let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<[T, T]> {
                 return this;
             },
             next(): IteratorResult<[T, T]> {
-                idx++;
-                while (idx < getNextSlot() && orderedKeys.get(idx) === undefined) {
+                while (keys.get(0 as any) !== undefined) {
+                    let adj = 0;
+                    let h = 1;
+                    while (true) {
+                        const holePos: number = keys.get(-h as any) as any;
+                        if (holePos === undefined || holePos >= idx) break;
+                        adj++;
+                        h++;
+                    }
+                    idx -= adj;
+                    keys = keys.get(0 as any) as any;
+                }
+                while (idx < getNextSlot() && keys.get(idx) === undefined) {
                     idx++;
                 }
                 if (idx >= getNextSlot()) {
                     return { done: true, value: undefined! };
                 }
-                const val = orderedKeys.get(idx)!;
+                const val = keys.get(idx)!;
+                idx++;
                 return { done: false, value: [val, val] as [T, T] };
             },
         };
     }
 
     public keys(): IterableIterator<T> {
-        const { orderedKeys } = this;
+        let keys = this.orderedKeys;
         const getNextSlot = () => this.nextSlot;
-        let idx = 0;
+        let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<T> {
                 return this;
             },
             next(): IteratorResult<T> {
-                idx++;
-                while (idx < getNextSlot() && orderedKeys.get(idx) === undefined) {
+                while (keys.get(0 as any) !== undefined) {
+                    let adj = 0;
+                    let h = 1;
+                    while (true) {
+                        const holePos: number = keys.get(-h as any) as any;
+                        if (holePos === undefined || holePos >= idx) break;
+                        adj++;
+                        h++;
+                    }
+                    idx -= adj;
+                    keys = keys.get(0 as any) as any;
+                }
+                while (idx < getNextSlot() && keys.get(idx) === undefined) {
                     idx++;
                 }
                 if (idx >= getNextSlot()) {
                     return { done: true, value: undefined! };
                 }
-                return { done: false, value: orderedKeys.get(idx)! };
+                const val = keys.get(idx)!;
+                idx++;
+                return { done: false, value: val };
             },
         };
     }
 
     public values(): IterableIterator<T> {
-        const { orderedKeys } = this;
+        let keys = this.orderedKeys;
         const getNextSlot = () => this.nextSlot;
-        let idx = 0;
+        let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<T> {
                 return this;
             },
             next(): IteratorResult<T> {
-                idx++;
-                while (idx < getNextSlot() && orderedKeys.get(idx) === undefined) {
+                while (keys.get(0 as any) !== undefined) {
+                    let adj = 0;
+                    let h = 1;
+                    while (true) {
+                        const holePos: number = keys.get(-h as any) as any;
+                        if (holePos === undefined || holePos >= idx) break;
+                        adj++;
+                        h++;
+                    }
+                    idx -= adj;
+                    keys = keys.get(0 as any) as any;
+                }
+                while (idx < getNextSlot() && keys.get(idx) === undefined) {
                     idx++;
                 }
                 if (idx >= getNextSlot()) {
                     return { done: true, value: undefined! };
                 }
-                return { done: false, value: orderedKeys.get(idx)! };
+                const val = keys.get(idx)!;
+                idx++;
+                return { done: false, value: val };
             },
         };
     }

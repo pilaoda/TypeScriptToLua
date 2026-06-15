@@ -404,17 +404,19 @@ describe("set iterator stress (v8-style)", () => {
 });
 
 describe("set memory", () => {
-    test("deleting primitive values should not leak memory", () => {
+    test("deleting values should not leak memory", () => {
         const result = util.testFunction`
             /** @noSelf */ declare function collectgarbage(opt?: string): number;
             collectgarbage(); collectgarbage();
             const baseline = collectgarbage("count");
 
             const set = new Set<number>();
-            for (let round = 0; round < 10; round++) {
-                for (let i = 0; i < 1000; i++) set.add(round * 1000 + i);
-                for (let i = 0; i < 1000; i++) set.delete(round * 1000 + i);
-            }
+            for (let i = 1; i <= 10000; i++) set.add(i);
+            for (let i = 1; i <= 10000; i++) set.delete(i);
+            set.add(-1);
+            set.add(-2);
+            set.delete(-1);
+            set.delete(-2);
 
             collectgarbage(); collectgarbage();
             const after = collectgarbage("count");

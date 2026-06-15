@@ -9,6 +9,7 @@ export class Map<K extends AnyNotNil, V> {
     private orderedKeys = new LuaTable<number, K>();
     private orderedValues = new LuaTable<number, V>();
     private nextSlot = 1;
+    private deletedCount = 0;
 
     constructor(entries?: Iterable<readonly [K, V]> | Array<readonly [K, V]>) {
         if (entries === undefined) return;
@@ -40,16 +41,53 @@ export class Map<K extends AnyNotNil, V> {
         this.orderedValues = new LuaTable();
         this.nextSlot = 1;
         this.size = 0;
+        this.deletedCount = 0;
     }
 
     public delete(key: K): boolean {
         const idx = this.keyIndex.get(key);
         if (idx === undefined) return false;
         this.size--;
+        this.deletedCount++;
         this.keyIndex.set(key, undefined!);
         this.orderedKeys.set(idx, undefined!);
         this.orderedValues.set(idx, undefined!);
+
+        if (this.deletedCount > this.size) {
+            this.compact();
+        }
         return true;
+    }
+
+    private compact(): void {
+        const oldKeys = this.orderedKeys;
+        const oldValues = this.orderedValues;
+        const oldNextSlot = this.nextSlot;
+        const newKeys = new LuaTable<number, K>();
+        const newValues = new LuaTable<number, V>();
+        let newSlot = 1;
+        let holeCount = 0;
+
+        for (let i = 1; i < oldNextSlot; i++) {
+            const k = oldKeys.get(i);
+            if (k !== undefined) {
+                newKeys.set(newSlot, k);
+                newValues.set(newSlot, oldValues.get(i));
+                this.keyIndex.set(k, newSlot);
+                newSlot++;
+            } else {
+                holeCount++;
+                oldKeys.set(-holeCount as any, i as any);
+            }
+        }
+
+        oldKeys.set(0 as any, newKeys as any);
+        oldValues.set(0 as any, newValues as any);
+
+        this.orderedKeys = newKeys;
+        this.orderedValues = newValues;
+        this.nextSlot = newSlot;
+        this.deletedCount = 0;
     }
 
     public forEach(callback: (value: V, key: K, map: Map<K, V>) => any): void {
@@ -88,64 +126,107 @@ export class Map<K extends AnyNotNil, V> {
     }
 
     public entries(): IterableIterator<[K, V]> {
-        const { orderedKeys, orderedValues } = this;
+        let keys = this.orderedKeys;
+        let vals = this.orderedValues;
         const getNextSlot = () => this.nextSlot;
-        let idx = 0;
+        let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<[K, V]> {
                 return this;
             },
             next(): IteratorResult<[K, V]> {
-                idx++;
-                while (idx < getNextSlot() && orderedKeys.get(idx) === undefined) {
+                while (keys.get(0 as any) !== undefined) {
+                    let adj = 0;
+                    let h = 1;
+                    while (true) {
+                        const holePos: number = keys.get(-h as any) as any;
+                        if (holePos === undefined || holePos >= idx) break;
+                        adj++;
+                        h++;
+                    }
+                    idx -= adj;
+                    keys = keys.get(0 as any) as any;
+                    vals = vals.get(0 as any) as any;
+                }
+                while (idx < getNextSlot() && keys.get(idx) === undefined) {
                     idx++;
                 }
                 if (idx >= getNextSlot()) {
                     return { done: true, value: undefined! };
                 }
-                return { done: false, value: [orderedKeys.get(idx)!, orderedValues.get(idx)] as [K, V] };
+                const i = idx;
+                idx++;
+                return { done: false, value: [keys.get(i)!, vals.get(i)] as [K, V] };
             },
         };
     }
 
     public keys(): IterableIterator<K> {
-        const { orderedKeys } = this;
+        let keys = this.orderedKeys;
         const getNextSlot = () => this.nextSlot;
-        let idx = 0;
+        let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<K> {
                 return this;
             },
             next(): IteratorResult<K> {
-                idx++;
-                while (idx < getNextSlot() && orderedKeys.get(idx) === undefined) {
+                while (keys.get(0 as any) !== undefined) {
+                    let adj = 0;
+                    let h = 1;
+                    while (true) {
+                        const holePos: number = keys.get(-h as any) as any;
+                        if (holePos === undefined || holePos >= idx) break;
+                        adj++;
+                        h++;
+                    }
+                    idx -= adj;
+                    keys = keys.get(0 as any) as any;
+                }
+                while (idx < getNextSlot() && keys.get(idx) === undefined) {
                     idx++;
                 }
                 if (idx >= getNextSlot()) {
                     return { done: true, value: undefined! };
                 }
-                return { done: false, value: orderedKeys.get(idx)! };
+                const i = idx;
+                idx++;
+                return { done: false, value: keys.get(i)! };
             },
         };
     }
 
     public values(): IterableIterator<V> {
-        const { orderedKeys, orderedValues } = this;
+        let keys = this.orderedKeys;
+        let vals = this.orderedValues;
         const getNextSlot = () => this.nextSlot;
-        let idx = 0;
+        let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<V> {
                 return this;
             },
             next(): IteratorResult<V> {
-                idx++;
-                while (idx < getNextSlot() && orderedKeys.get(idx) === undefined) {
+                while (keys.get(0 as any) !== undefined) {
+                    let adj = 0;
+                    let h = 1;
+                    while (true) {
+                        const holePos: number = keys.get(-h as any) as any;
+                        if (holePos === undefined || holePos >= idx) break;
+                        adj++;
+                        h++;
+                    }
+                    idx -= adj;
+                    keys = keys.get(0 as any) as any;
+                    vals = vals.get(0 as any) as any;
+                }
+                while (idx < getNextSlot() && keys.get(idx) === undefined) {
                     idx++;
                 }
                 if (idx >= getNextSlot()) {
                     return { done: true, value: undefined! };
                 }
-                return { done: false, value: orderedValues.get(idx) };
+                const i = idx;
+                idx++;
+                return { done: false, value: vals.get(i) };
             },
         };
     }

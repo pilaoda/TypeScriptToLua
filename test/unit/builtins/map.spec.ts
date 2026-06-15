@@ -428,17 +428,19 @@ describe("map iterator stress (v8-style)", () => {
 });
 
 describe("map memory", () => {
-    test("deleting primitive keys should not leak memory", () => {
+    test("deleting keys should not leak memory", () => {
         const result = util.testFunction`
             /** @noSelf */ declare function collectgarbage(opt?: string): number;
             collectgarbage(); collectgarbage();
             const baseline = collectgarbage("count");
 
             const map = new Map<number, number>();
-            for (let round = 0; round < 10; round++) {
-                for (let i = 0; i < 1000; i++) map.set(round * 1000 + i, i);
-                for (let i = 0; i < 1000; i++) map.delete(round * 1000 + i);
-            }
+            for (let i = 1; i <= 10000; i++) map.set(i, i);
+            for (let i = 1; i <= 10000; i++) map.delete(i);
+            map.set(-1, -1);
+            map.set(-2, -2);
+            map.delete(-1);
+            map.delete(-2);
 
             collectgarbage(); collectgarbage();
             const after = collectgarbage("count");
