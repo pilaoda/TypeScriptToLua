@@ -109,7 +109,7 @@ export class Set<T extends AnyNotNil> {
 
     public entries(): IterableIterator<[T, T]> {
         let keys = this.orderedKeys;
-        const getNextSlot = () => this.nextSlot;
+        const set = this;
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<[T, T]> {
@@ -128,10 +128,10 @@ export class Set<T extends AnyNotNil> {
                     idx -= adj;
                     keys = keys.get(0 as any) as any;
                 }
-                while (idx < getNextSlot() && keys.get(idx) === undefined) {
+                while (idx < set.nextSlot && keys.get(idx) === undefined) {
                     idx++;
                 }
-                if (idx >= getNextSlot()) {
+                if (idx >= set.nextSlot) {
                     return { done: true, value: undefined! };
                 }
                 const val = keys.get(idx)!;
@@ -143,7 +143,7 @@ export class Set<T extends AnyNotNil> {
 
     public keys(): IterableIterator<T> {
         let keys = this.orderedKeys;
-        const getNextSlot = () => this.nextSlot;
+        const set = this;
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<T> {
@@ -162,10 +162,10 @@ export class Set<T extends AnyNotNil> {
                     idx -= adj;
                     keys = keys.get(0 as any) as any;
                 }
-                while (idx < getNextSlot() && keys.get(idx) === undefined) {
+                while (idx < set.nextSlot && keys.get(idx) === undefined) {
                     idx++;
                 }
-                if (idx >= getNextSlot()) {
+                if (idx >= set.nextSlot) {
                     return { done: true, value: undefined! };
                 }
                 const val = keys.get(idx)!;
@@ -177,7 +177,7 @@ export class Set<T extends AnyNotNil> {
 
     public values(): IterableIterator<T> {
         let keys = this.orderedKeys;
-        const getNextSlot = () => this.nextSlot;
+        const set = this;
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<T> {
@@ -196,10 +196,10 @@ export class Set<T extends AnyNotNil> {
                     idx -= adj;
                     keys = keys.get(0 as any) as any;
                 }
-                while (idx < getNextSlot() && keys.get(idx) === undefined) {
+                while (idx < set.nextSlot && keys.get(idx) === undefined) {
                     idx++;
                 }
-                if (idx >= getNextSlot()) {
+                if (idx >= set.nextSlot) {
                     return { done: true, value: undefined! };
                 }
                 const val = keys.get(idx)!;

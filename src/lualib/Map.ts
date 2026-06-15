@@ -144,7 +144,7 @@ export class Map<K extends AnyNotNil, V> {
     public entries(): IterableIterator<[K, V]> {
         let keys = this.orderedKeys;
         let vals = this.orderedValues;
-        const getNextSlot = () => this.nextSlot;
+        const map = this;
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<[K, V]> {
@@ -164,10 +164,10 @@ export class Map<K extends AnyNotNil, V> {
                     keys = keys.get(0 as any) as any;
                     vals = vals.get(0 as any) as any;
                 }
-                while (idx < getNextSlot() && keys.get(idx) === undefined) {
+                while (idx < map.nextSlot && keys.get(idx) === undefined) {
                     idx++;
                 }
-                if (idx >= getNextSlot()) {
+                if (idx >= map.nextSlot) {
                     return { done: true, value: undefined! };
                 }
                 const i = idx;
@@ -179,7 +179,7 @@ export class Map<K extends AnyNotNil, V> {
 
     public keys(): IterableIterator<K> {
         let keys = this.orderedKeys;
-        const getNextSlot = () => this.nextSlot;
+        const map = this;
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<K> {
@@ -198,10 +198,10 @@ export class Map<K extends AnyNotNil, V> {
                     idx -= adj;
                     keys = keys.get(0 as any) as any;
                 }
-                while (idx < getNextSlot() && keys.get(idx) === undefined) {
+                while (idx < map.nextSlot && keys.get(idx) === undefined) {
                     idx++;
                 }
-                if (idx >= getNextSlot()) {
+                if (idx >= map.nextSlot) {
                     return { done: true, value: undefined! };
                 }
                 const i = idx;
@@ -214,7 +214,7 @@ export class Map<K extends AnyNotNil, V> {
     public values(): IterableIterator<V> {
         let keys = this.orderedKeys;
         let vals = this.orderedValues;
-        const getNextSlot = () => this.nextSlot;
+        const map = this;
         let idx = 1;
         return {
             [Symbol.iterator](): IterableIterator<V> {
@@ -234,10 +234,10 @@ export class Map<K extends AnyNotNil, V> {
                     keys = keys.get(0 as any) as any;
                     vals = vals.get(0 as any) as any;
                 }
-                while (idx < getNextSlot() && keys.get(idx) === undefined) {
+                while (idx < map.nextSlot && keys.get(idx) === undefined) {
                     idx++;
                 }
-                if (idx >= getNextSlot()) {
+                if (idx >= map.nextSlot) {
                     return { done: true, value: undefined! };
                 }
                 const i = idx;
