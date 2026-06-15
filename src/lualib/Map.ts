@@ -4,6 +4,11 @@
 // old → new at index 0; iterators transition lazily by adjusting their
 // index (subtracting holes before current position).
 //
+// Using integer-indexed arrays (orderedKeys/orderedValues) for the insertion
+// order leverages Lua's array part: sequential integer keys are stored in
+// contiguous memory, making iteration a simple pointer offset (~2-3 cycles)
+// rather than a hash table lookup (~15-50 cycles per step).
+//
 // Based on V8's OrderedHashTable:
 //   Rehash:     https://chromium.googlesource.com/v8/v8/+/main/src/objects/ordered-hash-table.cc#263
 //   Transition: https://chromium.googlesource.com/v8/v8/+/main/src/objects/ordered-hash-table.cc#1443
