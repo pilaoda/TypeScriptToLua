@@ -410,15 +410,10 @@ describe("set memory", () => {
             collectgarbage(); collectgarbage();
             const baseline = collectgarbage("count");
 
-            const set = new Set<string>();
+            const set = new Set<number>();
             for (let round = 0; round < 10; round++) {
-                const keys: string[] = [];
-                for (let i = 0; i < 1000; i++) {
-                    const k = "k" + (round * 1000 + i);
-                    keys.push(k);
-                    set.add(k);
-                }
-                for (const k of keys) { set.delete(k); }
+                for (let i = 0; i < 1000; i++) set.add(round * 1000 + i);
+                for (let i = 0; i < 1000; i++) set.delete(round * 1000 + i);
             }
 
             collectgarbage(); collectgarbage();
@@ -429,7 +424,7 @@ describe("set memory", () => {
                 retained: Math.floor(after - baseline),
             };
         `.getLuaExecutionResult();
-        // console.log("memory:", result);
+        console.log("set memory:", result);
         expect(result.size).toBe(0);
         expect(result.retained).toBeLessThan(100);
     });

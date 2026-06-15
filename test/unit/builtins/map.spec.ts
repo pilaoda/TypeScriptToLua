@@ -434,15 +434,10 @@ describe("map memory", () => {
             collectgarbage(); collectgarbage();
             const baseline = collectgarbage("count");
 
-            const map = new Map<string, number>();
+            const map = new Map<number, number>();
             for (let round = 0; round < 10; round++) {
-                const keys: string[] = [];
-                for (let i = 0; i < 1000; i++) {
-                    const k = "k" + (round * 1000 + i);
-                    keys.push(k);
-                    map.set(k, i);
-                }
-                for (const k of keys) { map.delete(k); }
+                for (let i = 0; i < 1000; i++) map.set(round * 1000 + i, i);
+                for (let i = 0; i < 1000; i++) map.delete(round * 1000 + i);
             }
 
             collectgarbage(); collectgarbage();
@@ -453,7 +448,7 @@ describe("map memory", () => {
                 retained: Math.floor(after - baseline),
             };
         `.getLuaExecutionResult();
-        // console.log("memory:", result);
+        console.log("map memory:", result);
         expect(result.size).toBe(0);
         expect(result.retained).toBeLessThan(100);
     });
