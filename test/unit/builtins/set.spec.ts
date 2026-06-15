@@ -403,6 +403,9 @@ describe("set iterator stress (v8-style)", () => {
     });
 });
 
+// See map.spec.ts "map memory" describe block for detailed explanation of
+// the Lua table rehash trick with negative keys.
+// https://github.com/lua/lua/blob/master/ltable.c (luaH_newkey, rehash, computesizes)
 describe("set memory", () => {
     test("deleting values should not leak memory", () => {
         const result = util.testFunction`
@@ -413,6 +416,7 @@ describe("set memory", () => {
             const set = new Set<number>();
             for (let i = 1; i <= 10000; i++) set.add(i);
             for (let i = 1; i <= 10000; i++) set.delete(i);
+            // Trigger Lua table rehash to shrink internal tables
             set.add(-1);
             set.add(-2);
             set.delete(-1);
@@ -426,7 +430,6 @@ describe("set memory", () => {
                 retained: Math.floor(after - baseline),
             };
         `.getLuaExecutionResult();
-        console.log("set memory:", result);
         expect(result.size).toBe(0);
         expect(result.retained).toBeLessThan(100);
     });

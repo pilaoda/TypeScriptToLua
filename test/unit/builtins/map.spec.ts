@@ -427,6 +427,16 @@ describe("map iterator stress (v8-style)", () => {
     });
 });
 
+// Lua tables don't shrink when entries are set to nil — they only resize on
+// the next insert that exhausts all free hash nodes (luaH_newkey → getfreepos
+// → rehash). Keys 1..10000 go to the array part (positive integers, >50%
+// density). After deleting all, the array part stays allocated. Inserting -1
+// (negative → hash part, which is empty/dummy after only positive keys)
+// triggers rehash via the isdummy(t) check in luaH_newkey, causing
+// computesizes to recalculate: 0 live integer keys → array shrinks to 0.
+// A second insert (-2) ensures all internal Map tables (e.g. nextKey,
+// previousKey) also get a chance to rehash and shrink.
+// See: https://github.com/lua/lua/blob/master/ltable.c (luaH_newkey, rehash, computesizes)
 describe("map memory", () => {
     test("deleting keys should not leak memory", () => {
         const result = util.testFunction`
@@ -437,6 +447,7 @@ describe("map memory", () => {
             const map = new Map<number, number>();
             for (let i = 1; i <= 10000; i++) map.set(i, i);
             for (let i = 1; i <= 10000; i++) map.delete(i);
+            // Trigger Lua table rehash to shrink internal tables (see comment above)
             map.set(-1, -1);
             map.set(-2, -2);
             map.delete(-1);
@@ -450,7 +461,6 @@ describe("map memory", () => {
                 retained: Math.floor(after - baseline),
             };
         `.getLuaExecutionResult();
-        console.log("map memory:", result);
         expect(result.size).toBe(0);
         expect(result.retained).toBeLessThan(100);
     });
