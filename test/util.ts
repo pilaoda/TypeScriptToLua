@@ -7,6 +7,7 @@ import * as path from "path";
 import * as prettyFormat from "pretty-format";
 import * as ts from "typescript";
 import * as vm from "vm";
+import { createRequire } from "module";
 import * as tstl from "../src";
 import { createEmitOutputCollector } from "../src/transpilation/output-collector";
 import { EmitHost, getEmitOutDir, transpileProject } from "../src";
@@ -137,6 +138,43 @@ function removeUndefinedFields(obj: any): any {
     }
 
     return obj;
+}
+
+interface JsModuleRecord {
+    exports: any;
+}
+
+interface JsModuleFile {
+    fileName: string;
+    js: string;
+}
+
+function normalizeJsModuleName(fileName: string): string {
+    return normalizeSlashes(path.normalize(fileName));
+}
+
+function getSourceFileModuleNames(fileName: string): string[] {
+    const normalizedFileName = normalizeJsModuleName(fileName);
+    if (normalizedFileName.endsWith("/index.ts")) {
+        return [normalizedFileName, normalizedFileName.slice(0, -"/index.ts".length)];
+    }
+    if (normalizedFileName.endsWith(".ts")) {
+        return [normalizedFileName, normalizedFileName.slice(0, -".ts".length)];
+    }
+    return [normalizedFileName];
+}
+
+function getRequireModuleNames(fileName: string, importerFileName: string): string[] {
+    const resolvedFileName = fileName.startsWith(".")
+        ? normalizeJsModuleName(path.join(path.dirname(importerFileName), fileName))
+        : normalizeJsModuleName(fileName);
+    return [resolvedFileName, `${resolvedFileName}.ts`, `${resolvedFileName}/index.ts`];
+}
+
+function requireNativeModule(fileName: string, importerFileName: string): any {
+    const requirePath = path.isAbsolute(importerFileName) ? importerFileName : path.resolve(importerFileName);
+    const importerRequire = createRequire(requirePath);
+    return importerRequire(fileName.startsWith("node:") ? fileName.slice("node:".length) : fileName);
 }
 
 export type ExecutableTranspiledFile = tstl.TranspiledFile & { lua: string; luaSourceMap: string };
@@ -577,43 +615,70 @@ end)());`;
 
     private executeJs(): any {
         const { transpiledFiles } = this.getJsResult();
-        // Custom require for extra files. Really basic. Global support is hacky
+        // Custom require for extra files. Global support is hacky
         // TODO Should be replaced with vm.Module https://nodejs.org/api/vm.html#vm_class_vm_module
         // once stable
-        const globalContext: any = {};
-        const mainExports = {};
-        globalContext.exports = mainExports;
-        globalContext.module = { exports: mainExports };
-        globalContext.require = (fileName: string) => {
-            // create clean export object for "module"
-            const moduleExports = {};
-            globalContext.exports = moduleExports;
-            globalContext.module = { exports: moduleExports };
-            const baseName = fileName.replace("./", "");
-            const transpiledExtraFile = transpiledFiles.find(({ sourceFiles }) =>
-                sourceFiles.some(f => f.fileName === baseName + ".ts" || f.fileName === baseName + "/index.ts")
-            );
-
-            if (transpiledExtraFile?.js) {
-                vm.runInContext(transpiledExtraFile.js, globalContext);
-            } else if (fileName.startsWith("node:")) {
-                return require(fileName.slice(5));
+        const moduleFiles = new Map<string, JsModuleFile>();
+        for (const transpiledFile of transpiledFiles) {
+            if (transpiledFile.js === undefined) continue;
+            for (const sourceFile of transpiledFile.sourceFiles) {
+                const sourceFileName = normalizeJsModuleName(sourceFile.fileName);
+                for (const moduleName of getSourceFileModuleNames(sourceFile.fileName)) {
+                    moduleFiles.set(moduleName, { fileName: sourceFileName, js: transpiledFile.js });
+                }
             }
+        }
 
-            // Have to return globalContext.module.exports
-            // becuase module.exports might no longer be equal to moduleExports (export assignment)
-            const result = globalContext.module.exports;
-            // Reset module/export
-            globalContext.exports = mainExports;
-            globalContext.module = { exports: mainExports };
-            return result;
+        const globalContext: any = {};
+        const moduleCache = new Map<string, JsModuleRecord>();
+
+        const runModuleCode = (code: string, moduleFileName: string, moduleRecord: JsModuleRecord): any => {
+            const previousExports = globalContext.exports;
+            const previousModule = globalContext.module;
+            const previousRequire = globalContext.require;
+
+            globalContext.exports = moduleRecord.exports;
+            globalContext.module = moduleRecord;
+            globalContext.require = (fileName: string) => {
+                if (fileName.startsWith("node:")) {
+                    return requireNativeModule(fileName, moduleFileName);
+                }
+
+                for (const moduleName of getRequireModuleNames(fileName, moduleFileName)) {
+                    const moduleFile = moduleFiles.get(moduleName);
+                    if (moduleFile === undefined) continue;
+
+                    const cachedModuleRecord = moduleCache.get(moduleFile.fileName);
+                    if (cachedModuleRecord !== undefined) {
+                        return cachedModuleRecord.exports;
+                    }
+
+                    const nextModuleRecord: JsModuleRecord = { exports: {} };
+                    moduleCache.set(moduleFile.fileName, nextModuleRecord);
+                    return runModuleCode(moduleFile.js, moduleFile.fileName, nextModuleRecord);
+                }
+
+                return requireNativeModule(fileName, moduleFileName);
+            };
+
+            try {
+                vm.runInContext(code, globalContext);
+                return moduleRecord.exports;
+            } finally {
+                globalContext.exports = previousExports;
+                globalContext.module = previousModule;
+                globalContext.require = previousRequire;
+            }
         };
 
         vm.createContext(globalContext);
 
         let result: unknown;
         try {
-            result = vm.runInContext(this.getJsCodeWithWrapper(), globalContext);
+            const mainModuleRecord: JsModuleRecord = { exports: {} };
+            const mainModuleName = normalizeJsModuleName(this.mainFileName);
+            moduleCache.set(mainModuleName, mainModuleRecord);
+            result = runModuleCode(this.getJsCodeWithWrapper(), mainModuleName, mainModuleRecord);
         } catch (error) {
             const hasMessage = (error: any): error is { message: string } => error.message !== undefined;
             if (hasMessage(error)) {
