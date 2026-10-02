@@ -153,8 +153,13 @@ export class __TS__Promise<T> implements Promise<T> {
             this.state = PromiseState.Fulfilled;
             this.value = value;
 
+            // Settled promises never invoke callbacks again; release both arrays so a long-lived promise does not pin pending-era continuations.
+            const callbacks = this.fulfilledCallbacks;
+            this.fulfilledCallbacks = [];
+            this.rejectedCallbacks = [];
+
             // Tail call return is important!
-            return this.invokeCallbacks(this.fulfilledCallbacks, value);
+            return this.invokeCallbacks(callbacks, value);
         }
     }
 
@@ -164,8 +169,12 @@ export class __TS__Promise<T> implements Promise<T> {
             this.state = PromiseState.Rejected;
             this.rejectionReason = reason;
 
+            const callbacks = this.rejectedCallbacks;
+            this.fulfilledCallbacks = [];
+            this.rejectedCallbacks = [];
+
             // Tail call return is important!
-            return this.invokeCallbacks(this.rejectedCallbacks, reason);
+            return this.invokeCallbacks(callbacks, reason);
         }
     }
 
